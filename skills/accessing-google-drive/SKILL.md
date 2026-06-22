@@ -42,6 +42,10 @@ scripts/gdrive.sh download "<fileId>" out.pdf       # download a binary file
 scripts/gdrive.sh export "<fileId>" out.pdf         # export a Google Doc/Sheet as PDF
 ```
 
+Listing commands print a clean table (`#  name | type | modified | fileId`) by default.
+Add `--json` anywhere on the line for raw JSON (e.g. to grab file IDs programmatically):
+`scripts/gdrive.sh search "invoice" --json`
+
 ## How it works (do this manually if the script is unavailable)
 
 1. **Read the token from the keychain:**

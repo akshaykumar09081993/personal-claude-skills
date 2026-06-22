@@ -10,6 +10,12 @@ Add custom instructions, skill definitions, project context, or preferences here
 - Add markdown files with instructions or context you want Claude to always know
 - Claude will read this repo at session start
 
+## Push everything reusable here
+Anything reusable built with Claude that isn't already here — skills, helper scripts,
+reference docs, persistent context — should be committed and pushed to this repo, so every
+future session automatically has it (a SessionStart hook pulls this repo and installs the
+skills on each launch).
+
 ## Available skills
 
 | Skill | What it does |

@@ -12,8 +12,11 @@
 #   ./gdrive.sh find-folder "<name>"     Find a folder's ID by name
 #   ./gdrive.sh meta "<fileId>"          Show metadata for one file
 #   ./gdrive.sh download "<fileId>" "<dest>"   Download a binary file
-#   ./gdrive.sh export "<fileId>" "<dest.pdf>" Export a Google Doc/Sheet/Slides (as PDF by default)
+#   ./gdrive.sh export "<fileId>" "<dest.pdf>" Export a Google Doc/Sheet/Slides (PDF default)
 #   ./gdrive.sh token                    Print the current access token (debug)
+#
+# Listing commands (list/search/folder/find-folder) print a clean table by default.
+# Add --json anywhere on the line to get raw JSON instead (handy for scripting / file IDs).
 #
 # If you get "token expired" or HTTP 401, the user should run in Claude Code:
 #   /mcp  ->  gdrive  ->  Reauthenticate   (usually instant; refresh token persists)
@@ -24,6 +27,14 @@ set -euo pipefail
 KEYCHAIN_SERVICE="Claude Code-credentials"
 API="https://www.googleapis.com/drive/v3"
 
+# --- parse a global --json flag from anywhere in the args ---
+JSON=0
+ARGS=()
+for a in "$@"; do
+  if [ "$a" = "--json" ]; then JSON=1; else ARGS+=("$a"); fi
+done
+set -- "${ARGS[@]:-}"
+
 get_token() {
   security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null | python3 -c '
 import sys, json, time
@@ -31,20 +42,53 @@ try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit("ERR: could not parse Claude Code credentials from keychain")
-tok = None
-exp = None
+tok = exp = None
 for k, v in d.get("mcpOAuth", {}).items():
     if k.startswith("gdrive"):
-        tok = v.get("accessToken")
-        exp = v.get("expiresAt")
-        break
+        tok = v.get("accessToken"); exp = v.get("expiresAt"); break
 if not tok:
-    sys.exit("ERR: no gdrive token found. Connect it: Claude Code -> /mcp -> gdrive -> Authenticate")
+    sys.exit("ERR: no gdrive token. Connect it: Claude Code -> /mcp -> gdrive -> Authenticate")
 if exp and (exp/1000.0) < time.time():
     sys.stderr.write("WARN: token appears expired; if calls 401, run /mcp -> gdrive -> Reauthenticate\n")
 print(tok)
 '
 }
+
+# Pretty-print a Drive files list (JSON on stdin) as a table, unless --json was passed.
+emit() {
+  if [ "$JSON" = "1" ]; then
+    python3 -m json.tool
+  else
+    python3 -c '
+import sys, json
+try:
+    files = json.load(sys.stdin).get("files", [])
+except Exception:
+    sys.exit("ERR: unexpected response (token may be expired -> /mcp -> gdrive -> Reauthenticate)")
+K = {
+  "application/vnd.google-apps.folder":"Folder",
+  "application/vnd.google-apps.document":"Google Doc",
+  "application/vnd.google-apps.spreadsheet":"Google Sheet",
+  "application/vnd.google-apps.presentation":"Google Slides",
+  "application/pdf":"PDF","application/zip":"ZIP",
+  "image/jpeg":"JPEG","image/png":"PNG","image/heif":"HEIC",
+  "text/csv":"CSV","application/octet-stream":"binary",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":"Word .docx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"Excel .xlsx",
+}
+if not files:
+    print("(no files)"); sys.exit()
+print("TOTAL: %d\n" % len(files))
+for i, f in enumerate(files, 1):
+    kind = K.get(f.get("mimeType",""), f.get("mimeType",""))
+    mod  = f.get("modifiedTime","")[:10]
+    fid  = f.get("id","")
+    print("%3d. %-55s | %-13s | %s | %s" % (i, f.get("name","")[:55], kind, mod, fid))
+'
+  fi
+}
+
+urlq() { python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$1"; }
 
 TOKEN="$(get_token)"
 auth=(-H "Authorization: Bearer ${TOKEN}")
@@ -52,36 +96,31 @@ auth=(-H "Authorization: Bearer ${TOKEN}")
 cmd="${1:-list}"; shift || true
 
 case "$cmd" in
-  token)
-    echo "$TOKEN" ;;
+  token) echo "$TOKEN" ;;
 
   list)
     n="${1:-100}"
     curl -s "${auth[@]}" \
       "${API}/files?pageSize=${n}&fields=files(id,name,mimeType,modifiedTime)&orderBy=folder,modifiedTime%20desc" \
-      | python3 -m json.tool ;;
+      | emit ;;
 
   search)
     q="${1:?need search text}"
-    # URL-encode the q parameter
-    enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(\"name contains '\"+sys.argv[1].replace(chr(39),chr(92)+chr(39))+\"'\"))" "$q")
+    enc=$(urlq "name contains '${q//\'/\\\'}'")
     curl -s "${auth[@]}" \
-      "${API}/files?q=${enc}&pageSize=100&fields=files(id,name,mimeType,modifiedTime)" \
-      | python3 -m json.tool ;;
+      "${API}/files?q=${enc}&pageSize=100&fields=files(id,name,mimeType,modifiedTime)" | emit ;;
 
   folder)
     fid="${1:?need folderId}"; n="${2:-200}"
-    enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(\"'\"+sys.argv[1]+\"' in parents\"))" "$fid")
+    enc=$(urlq "'${fid}' in parents")
     curl -s "${auth[@]}" \
-      "${API}/files?q=${enc}&pageSize=${n}&fields=files(id,name,mimeType,modifiedTime)&orderBy=folder,name" \
-      | python3 -m json.tool ;;
+      "${API}/files?q=${enc}&pageSize=${n}&fields=files(id,name,mimeType,modifiedTime)&orderBy=folder,name" | emit ;;
 
   find-folder)
     name="${1:?need folder name}"
-    enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(\"mimeType='application/vnd.google-apps.folder' and name contains '\"+sys.argv[1].replace(chr(39),chr(92)+chr(39))+\"'\"))" "$name")
+    enc=$(urlq "mimeType='application/vnd.google-apps.folder' and name contains '${name//\'/\\\'}'")
     curl -s "${auth[@]}" \
-      "${API}/files?q=${enc}&pageSize=50&fields=files(id,name,modifiedTime)" \
-      | python3 -m json.tool ;;
+      "${API}/files?q=${enc}&pageSize=50&fields=files(id,name,mimeType,modifiedTime)" | emit ;;
 
   meta)
     fid="${1:?need fileId}"
@@ -96,8 +135,7 @@ case "$cmd" in
 
   export)
     fid="${1:?need fileId}"; dest="${2:?need dest path}"; mt="${3:-application/pdf}"
-    enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$mt")
-    curl -sL "${auth[@]}" "${API}/files/${fid}/export?mimeType=${enc}" -o "$dest"
+    curl -sL "${auth[@]}" "${API}/files/${fid}/export?mimeType=$(urlq "$mt")" -o "$dest"
     echo "Exported -> $dest ($mt)" ;;
 
   *)
