@@ -61,14 +61,31 @@ is NOT in the ordering grid (check **REPORTING** / **STATEMENTS** in the top nav
   - `S.O.` = **Suggested Order** (system suggestion)
   - `ADJ`  = **Adjustment** (manual +/-)
   - `F.O.` = **Final Order = S.O. + ADJ**  ← *this is the actual order placed* (read this for "how much ordered")
-  - `SFO`  = appears only on the weekly Totals column, with a small superscript. **Meaning is ambiguous**
-    (looks like a sales/forecast figure; it conflicted with the return data) — **do not rely on it**; anchor on F.O.
+  - `SFO`  = the week's **actual SALES** (scan/POS), shown in the weekly Totals column with a small
+    **superscript = variance vs the Final Order** (i.e. `SFO − F.O.`):
+    - **negative superscript** (e.g. `30 ⁻²⁰`) = sold LESS than ordered → **stale / over-ordered** (cut the order)
+    - **positive superscript** (e.g. `188 ⁺⁶⁸`) = sold MORE than ordered → **sold out / under-ordered** (raise the order)
+    This is the single best signal for fixing orders. (`4wk Rtn%` is the 4-week average stale rate; SFO variance is this week.)
 - **Product header** shows the SKU code, **`4wk Rtn%`** (4-week return / stale rate — over-ordering signal),
   and **`TF n`** = the **order multiple** (orders move in multiples of n; e.g. TF 9 → 9,18,27,36,45,54,63,81…).
 - Products deliver only on certain days (e.g. Tue/Thu/Sat); other days are 0.
 
 To answer "how much <product> for <store> on <day>": set customer → set week → filter product → read the
 **F.O.** in that day's column.
+
+## USEFUL INFORMATION section (displays & what's-on-sale)
+Top-nav **USEFUL INFORMATION** → `https://orderonotto.ca/useful-information` is a document library
+("Collections") of PDF/XLSX files, grouped into collections (each with a "Show More"). The ones that
+inform ordering:
+- **"… Walmart Snack Cake MOD"** + **"ATL - 2.0 Merchandising & Execution"** = **display / planogram (MOD)
+  docs** — e.g. `20FT / 16FT / 12FT / 08FT / 04FT MRTM 78H 24D GON R`. These show the **display footage &
+  layout** (how much shelf/display space a store has) → directly tells you where you need **more quantity**.
+- **"ATL - 1.0 Features & What's In Store"** = **what's on sale / promotions**, by week — e.g.
+  `Week NN 2026 Atlantic Promotions`, `Week NN 2026 What's In Store Execution`, `Atlantic <Month> Execution
+  Priorities`. Use this to anticipate demand lifts on featured/on-sale items.
+- Also: **3.0 Marketing & LTO** (sell sheets, limited-time offers), **4.1 Product Info** (catalogues, portfolio).
+To read the actual contents you must **open/download the PDF/XLSX** (each row is a file link) and parse it —
+the page itself only lists titles + dates. There's a Filter/Search box at the top of the page.
 
 ## Quick start (bundled helper)
 ```bash
