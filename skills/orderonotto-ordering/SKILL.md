@@ -66,6 +66,9 @@ is NOT in the ordering grid (check **REPORTING** / **STATEMENTS** in the top nav
     - **negative superscript** (e.g. `30 ⁻²⁰`) = sold LESS than ordered → **stale / over-ordered** (cut the order)
     - **positive superscript** (e.g. `188 ⁺⁶⁸`) = sold MORE than ordered → **sold out / under-ordered** (raise the order)
     This is the single best signal for fixing orders. (`4wk Rtn%` is the 4-week average stale rate; SFO variance is this week.)
+- **★ (star) in a day's cell = that product is ON SALE / on feature that day** → expect a demand spike; order
+  up for starred days (this is why on-sale items like the Holsum breads sell far over their order). Cross-check
+  the Features/Promotions PDFs in **Useful Information → "1.0 Features & What's In Store"** for the week.
 - **Product header** shows the SKU code, **`4wk Rtn%`** (4-week return / stale rate — over-ordering signal),
   and **`TF n`** = the **order multiple** (orders move in multiples of n; e.g. TF 9 → 9,18,27,36,45,54,63,81…).
 - Products deliver only on certain days (e.g. Tue/Thu/Sat); other days are 0.
