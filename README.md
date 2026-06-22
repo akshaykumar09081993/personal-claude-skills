@@ -21,6 +21,7 @@ skills on each launch).
 | Skill | What it does |
 |-------|--------------|
 | [`accessing-google-drive`](skills/accessing-google-drive/SKILL.md) | List, search, browse, read, and download the user's Google Drive files. Bypasses the broken `drivemcp` MCP by calling the Google Drive REST API with the token stored in the macOS keychain. |
+| [`orderonotto-ordering`](skills/orderonotto-ordering/SKILL.md) | Navigate the Bimbo Canada OTTO ordering portal (orderonotto.ca) via headless browser — log in, pick route/customer/week, filter a product, and read the order grid (S.O./ADJ/F.O., returns %, totals). For OTTO order lookups & forecasting. |
 
 ---
 
