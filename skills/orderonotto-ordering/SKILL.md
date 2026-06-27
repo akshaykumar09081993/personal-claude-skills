@@ -90,6 +90,21 @@ inform ordering:
 To read the actual contents you must **open/download the PDF/XLSX** (each row is a file link) and parse it —
 the page itself only lists titles + dates. There's a Filter/Search box at the top of the page.
 
+## REPORTING & STATEMENTS — real sales $, units, returns
+- **REPORTING** (`/reporting`): **By Product / By Customer**, filter by Route / Customer / Customer Type /
+  Location Group / Banner / Brand. Metrics per **This Week, Next Week, Last Week, Rolling 4-wk, Rolling 8-wk**:
+  **Gross Units Sold · Units Returned · Return % · Net Units Sold · Net Sales Total ($)**. This is the
+  authoritative source for sales $, volumes and returns — use for forecasting baselines, stale ranking, and
+  real annual figures. **Scope to our own stores.**
+- **STATEMENTS** (`/statements`): weekly **PDF statements** per route — Distributor Weekly Statement,
+  Distributor_Revenue_Route, Distributor_Route_Activity — **52 weeks** retained → actual **$ revenue**
+  (save weekly). Route Accounting contacts are listed on the page.
+
+## Task-specific OTTO skills
+For specific jobs use: **`otto-stale-check`** (returns/over-ordering), **`otto-ordering`** (demand forecast /
+how much to order), **`otto-week-execution`** (what's on sale + displays/MOD from Useful Information). All
+scope to our own stores and build on this skill's login/navigation mechanics.
+
 ## Quick start (bundled helper)
 ```bash
 OTTO_USERNAME='...' OTTO_PASSWORD='...' \
