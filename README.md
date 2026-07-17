@@ -25,6 +25,8 @@ skills on each launch).
 | [`otto-stale-check`](skills/otto-stale-check/SKILL.md) | Find over-ordered / stale products (returns) for our stores and how much to cut — via Reporting Return % + the grid's SFO−F.O. variance. |
 | [`otto-ordering`](skills/otto-ordering/SKILL.md) | Decide how much to order for our stores — forecast demand from sales (SFO), sale-aware (★), + all the demand factors; set slightly above sales, round to TF. |
 | [`otto-week-execution`](skills/otto-week-execution/SKILL.md) | Plan the week for our stores from the Useful Information docs — what's on sale/featured + what goes on which display/where (MOD). |
+| [`otto-download-statements`](skills/otto-download-statements/SKILL.md) | Log into OTTO and download the weekly *Distributor Weekly Statement* PDFs into `~/Documents/bookeeping/<year>/<Month>/Checking` (e.g. the ones paid in a given month). Step 1 → feeds `otto-bookkeeping`. |
+| [`otto-bookkeeping`](skills/otto-bookkeeping/SKILL.md) | Parse the downloaded OTTO statement PDFs into a CSV ledger + monthly summary (Product Total, fees, Balance Due) and reconcile payments received in a month. Step 2. |
 
 ---
 
