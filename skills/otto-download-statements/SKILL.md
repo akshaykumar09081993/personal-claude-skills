@@ -46,34 +46,42 @@ node scripts/otto-statements.js --all --out /tmp/otto-statements
 Prints a JSON manifest (`downloaded`, `skipped`, `errors`) and saves PDFs named exactly like the OTTO
 originals: `Distributor Weekly Statement Route 1702 From YYYY-MM-DD To YYYY-MM-DD.pdf`.
 
-## "Payments received in <month>" selection
-Bimbo pays weekly on a lag. Per the user's rule of thumb, *the statement generated last in the previous
-month is the one paid early the next month*. So `--paid-month YYYY-MM` downloads every weekly statement whose
-**week-ending** date falls in **[previous-month-start .. paid-month end]**. Widen with `--lag-weeks N` if a
-payment covers older weeks. Use `--from/--to` for an exact window, or `--all` to grab everything and let the
-bookkeeping step bucket by date.
+## "Payments received in <month>" selection — the payment rule
+Each statement covers a week that **ends Saturday**, is **generated Sunday**, and is **paid the next Friday**
+(= week-ending Saturday **+ 6 days**). So `--paid-month YYYY-MM` selects exactly the weeks whose Friday
+payment lands in that month. For **June 2026** that is the four week-endings **2026-05-30 → 06-06 → 06-13 →
+06-20** (05-30 pays Jun 5; 06-20 pays Jun 26). Note **06-27 pays Jul 3 → belongs to July**, and the last May
+week (05-30) correctly counts as June because it pays Jun 5 ("the last one from the previous month"). Use
+`--from/--to` (on the week-ending date) for an exact window, or `--all` for everything OTTO retains.
 
 ## Where files go
 Matches the user's existing layout: `~/Documents/bookeeping/<year>/<Month>/Checking/` (e.g.
 `~/Documents/bookeeping/2026/June/Checking/`). "Checking" is the bank-account bucket these OTTO deposits
 reconcile against. Override with `--out DIR`.
 
-## Login flow (shared with `orderonotto-ordering`)
-1. `goto` `https://orderonotto.ca/login.php` (`networkidle`).
-2. Fill `#mat-input-0` = email, `#mat-input-1` = password; click `button:has-text("LOG IN")`.
-3. SPA sometimes paints blank → wait-loop for known text, reload once as fallback.
-4. `goto` `https://orderonotto.ca/statements`; wait for `Statement`/`Weekly`/`Distributor`.
+## How the statements page works (verified live)
+- Login (shared with `orderonotto-ordering`): `goto` `login.php` → fill `#mat-input-0`/`#mat-input-1` →
+  click `LOG IN`; SPA sometimes paints blank → wait-loop, reload once.
+- `/statements` has, on the right, **Route #** (`mat-select` nth 0) and **Week Ending** (`mat-select` nth 1)
+  dropdowns + a **View Reports** button. The Week Ending list is a rolling **~52 weeks**.
+- Select a week → **View Reports** → the "Reports Available" panel lists 3 links per week: **Distributor
+  Weekly Statement**, Distributor_Revenue_Route, Distributor_Route_Activity. We download **only the
+  "Distributor Weekly Statement"**. Each link is a direct `lambda.ribon.ca/.../get-file?token=<JWT>` URL;
+  the script fetches it through the authenticated context (`ctx.request.get`).
+- **Reload `/statements` before EACH week.** Switching weeks without a reload leaves stale links in the DOM
+  and can fetch the wrong file. The script reloads per week and also decodes the token's `fileKey` to confirm
+  the served path matches the selected week before saving.
+- Debug artifacts always written to the out dir: `_statements-page.png`, `_dom-dump.json` (use if selectors
+  ever change / nothing downloads).
 
-## ⚠️ First-run verification (statements DOM not yet confirmed live)
-The exact `/statements` row/link/button selectors were **not** verified against a live login when authored.
-The script tries multiple strategies (authenticated fetch of `<a>.pdf` hrefs; click → browser `download`
-event) and **always** writes two debug artifacts into the out dir:
-- `_statements-page.png` — full-page screenshot
-- `_dom-dump.json` — candidate rows/links/buttons (anything mentioning statement/distributor/weekly/a date)
-
-If `downloaded` is empty and `candidatesFound` is 0, open those two files, identify the real download control,
-and refine the selector block in `scripts/otto-statements.js` (search for "Strategy A" / "Strategy B"). Then
-update this note.
+## ⚠️ Known OTTO data error — mislabeled (prior-year) files
+For some week slots OTTO serves a PDF whose **content is the same week of the *previous year*** even though the
+filename/fileKey say the current year (seen June 2026: weeks 06-06 & 06-13 returned 2025 statements #0006/#0007
+instead of the real #0058/#0059). The filename check can't catch this — only reading the PDF body can. The
+**`otto-bookkeeping` parser detects it** (compares filename week vs the PDF's `FOR WEEK`), warns, and excludes
+the file from the ledger. When it flags one, contact **Bimbo Route Accounting** (Atlantic – John Nkuekue,
+listed on the statements page) to get the correct statement. Quarantine such files under
+`<out>/_otto-mislabeled/`.
 
 ## Statement PDF anatomy (for reference / downstream parsing)
 Header: `ROUTE ID: 1702`, `STATEMENT NUMBER: WST…`, `FOR WEEK: YYYY-MM-DD - YYYY-MM-DD`. Money table has a

@@ -40,12 +40,18 @@ python3 scripts/parse-statements.py --dir ~/Documents/bookeeping/2025/December \
 Parsing rule: on each money line the **last** number is YTD and the **second-to-last** is the Current Week
 value — this holds across all rows (verified against real route-1702 statements).
 
-## Payment-month reconciliation
-`--paid-month YYYY-MM` keeps only statements whose **week-ending** date falls in
-`[previous-month-start .. that-month end]` — the "paid this month" window (Bimbo settles weekly on a lag;
-the last statement of the previous month is usually paid early the next). Omit it to include everything found.
-Note: each week's **Deposit** equals the prior week's Balance Due (the deposit clears the previous balance) —
-useful as a reconciliation cross-check against the bank statement.
+## Payment-month reconciliation (the payment rule)
+A statement's week **ends Saturday**, is **generated Sunday**, and is **paid the next Friday** (= week-ending
+Saturday **+ 6 days**). `--paid-month YYYY-MM` keeps only statements whose Friday payment lands in that month.
+The ledger shows a `Paid (Fri)` column and a `payment_date` CSV field. Omit `--paid-month` to include all.
+Cross-check: each week's **Deposit** equals the prior week's Balance Due (the deposit clears the previous
+balance) — handy for tying out against the bank ("Checking") statement.
+
+## ⚠️ Auto-detects OTTO's mislabeled (prior-year) files
+OTTO occasionally serves a PDF whose **content is a different (prior-year) week** than its filename claims
+(seen June 2026). The parser compares the filename week to the PDF's `FOR WEEK` line; on a mismatch it prints
+a loud warning (with statement number + the real content week) and **excludes that file from the ledger** so
+your totals stay clean. Follow up with Bimbo Route Accounting to get the correct statement, then re-run.
 
 ## Filtering
 `--route 1702` (default; `all` for every route) · `--csv PATH` to place the ledger where you want (e.g. in

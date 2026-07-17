@@ -28,7 +28,7 @@ Each statement's "Current Week" column is the weekly figure; the LAST number on 
 the SECOND-LAST is the Current Week value.
 """
 import argparse, csv, os, re, sys, glob
-from datetime import date
+from datetime import date, timedelta
 
 try:
     import pdfplumber
@@ -68,8 +68,18 @@ def parse_pdf(fp):
     rec = {'file': os.path.basename(fp)}
     m = re.search(r'ROUTE ID:\s*(\d+)', txt);            rec['route'] = m.group(1) if m else ''
     m = re.search(r'STATEMENT NUMBER:\s*(\S+)', txt);     rec['statement_no'] = m.group(1) if m else ''
-    m = re.search(r'FOR WEEK:\s*(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})', txt)
-    rec['week_from'], rec['week_to'] = (m.group(1), m.group(2)) if m else ('', '')
+    # Week dates: the FILENAME is OTTO's label; the PDF body "FOR WEEK" is what the file ACTUALLY contains.
+    # OTTO sometimes mis-links a week to a prior-year file, so capture both and flag any mismatch.
+    fn = re.search(r'From\s*(\d{4}-\d{2}-\d{2})\s*To\s*(\d{4}-\d{2}-\d{2})', os.path.basename(fp))
+    cm = re.search(r'FOR WEEK:\s*(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})', txt)
+    rec['content_week_to'] = cm.group(2) if cm else ''
+    if fn:
+        rec['week_from'], rec['week_to'] = fn.group(1), fn.group(2)
+    elif cm:
+        rec['week_from'], rec['week_to'] = cm.group(1), cm.group(2)
+    else:
+        rec['week_from'], rec['week_to'] = '', ''
+    rec['mismatch'] = bool(fn and cm and fn.group(2) != cm.group(2))
 
     def cw(label, exact=True):
         ln = grab(lines, label, exact)
@@ -88,19 +98,19 @@ def parse_pdf(fp):
     rec['balance_due_ytd']      = round(ytd(ln), 2) if ln else 0.0
     return rec
 
+def payment_date(week_to):
+    """Statement week ends Saturday -> generated Sunday -> paid the next Friday = week_to + 6 days."""
+    return date.fromisoformat(week_to) + timedelta(days=6)
+
 def in_paid_window(week_to, paid_month):
-    """week-ending date within [previous-month-start .. paid-month end]."""
+    """Include if the PAYMENT (week-ending Saturday + 6 days = next Friday) falls in paid_month."""
     if not paid_month or not week_to:
         return True
-    y, m = map(int, paid_month.split('-'))
-    prev_y, prev_m = (y - 1, 12) if m == 1 else (y, m - 1)
-    lo = date(prev_y, prev_m, 1)
-    hi = date(y, 12, 31) if m == 12 else date(y, m + 1, 1)  # exclusive-ish upper
     try:
-        d = date.fromisoformat(week_to)
+        pd = payment_date(week_to)
     except ValueError:
         return True
-    return lo <= d < hi
+    return pd.strftime('%Y-%m') == paid_month
 
 def money(x): return f"{x:,.2f}"
 
@@ -119,6 +129,7 @@ def main():
         sys.exit(f"No 'Distributor Weekly Statement' PDFs found under {root}")
 
     recs = []
+    mismatches = []
     for f in sorted(pdfs):
         try:
             r = parse_pdf(f)
@@ -128,31 +139,46 @@ def main():
             continue
         if not in_paid_window(r['week_to'], a.paid_month):
             continue
+        try:
+            r['payment_date'] = payment_date(r['week_to']).isoformat()
+        except Exception:
+            r['payment_date'] = ''
+        if r.get('mismatch'):
+            # OTTO served a file whose CONTENT is a different (prior-year) week — exclude from the ledger.
+            mismatches.append(r); continue
         recs.append(r)
 
+    if mismatches:
+        print("\n⚠️  OTTO DATA ERROR — these week slots served a file whose CONTENT is a different week")
+        print("    (usually the prior year). EXCLUDED from the ledger. Ask Bimbo Route Accounting to fix:")
+        for r in mismatches:
+            print(f"    • labelled {r['week_from']}..{r['week_to']}  but file contains week ending "
+                  f"{r['content_week_to']}  (stmt {r['statement_no']})")
+        print()
+
     if not recs:
-        sys.exit("No statements matched the filters.")
+        sys.exit("No valid (non-mismatched) statements matched the filters.")
     recs.sort(key=lambda r: r['week_to'])
 
-    cols = ['week_from','week_to','route','statement_no','product_total','total_credit',
+    cols = ['week_from','week_to','payment_date','route','statement_no','product_total','total_credit',
             'distributor_fees','distributor_fees_tax','fixed_distributor_fee','fixed_fee_tax',
             'deposit','total_manual_adj','balance_due_week','balance_due_ytd','file']
     out = os.path.expanduser(a.csv) if a.csv else os.path.join(root, 'statements-ledger.csv')
     with open(out, 'w', newline='') as fh:
-        w = csv.DictWriter(fh, fieldnames=cols); w.writeheader()
+        w = csv.DictWriter(fh, fieldnames=cols, extrasaction='ignore'); w.writeheader()
         for r in recs: w.writerow(r)
 
     # summary
     tot = lambda k: sum(r[k] for r in recs)
     print(f"\nParsed {len(recs)} weekly statement(s)" + (f" for payments in {a.paid_month}" if a.paid_month else "") + f" (route {a.route}).")
     print(f"CSV ledger: {out}\n")
-    hdr = f"{'Week ending':12} {'Product $':>13} {'Total credit':>13} {'Dist. fees':>12} {'Balance (net)':>14}"
+    hdr = f"{'Week ending':12} {'Paid (Fri)':12} {'Product $':>13} {'Total credit':>13} {'Dist. fees':>12} {'Balance (net)':>14}"
     print(hdr); print('-' * len(hdr))
     for r in recs:
-        print(f"{r['week_to']:12} {money(r['product_total']):>13} {money(r['total_credit']):>13} "
+        print(f"{r['week_to']:12} {r.get('payment_date',''):12} {money(r['product_total']):>13} {money(r['total_credit']):>13} "
               f"{money(r['distributor_fees']):>12} {money(r['balance_due_week']):>14}")
     print('-' * len(hdr))
-    print(f"{'TOTAL':12} {money(tot('product_total')):>13} {money(tot('total_credit')):>13} "
+    print(f"{'TOTAL':12} {'':12} {money(tot('product_total')):>13} {money(tot('total_credit')):>13} "
           f"{money(tot('distributor_fees')):>12} {money(tot('balance_due_week')):>14}")
     print(f"\nNet settled across these weeks (sum of weekly Balance Due): {money(tot('balance_due_week'))}")
 

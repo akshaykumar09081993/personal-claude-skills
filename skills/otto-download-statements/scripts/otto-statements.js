@@ -74,20 +74,26 @@ function defaultOutDir(paidMonth) {
   return path.join(home, 'Documents', 'bookeeping', String(y), MONTHS[m - 1], 'Checking');
 }
 
-// window of week-ending dates to accept
-function windowFor(opts) {
-  if (opts.from || opts.to) return { from: opts.from || '0000-00-00', to: opts.to || '9999-99-99' };
-  if (opts.all) return { from: '0000-00-00', to: '9999-99-99' };
-  if (opts.paidMonth && opts.paidMonth !== true) {
-    const [y, m] = opts.paidMonth.split('-').map(Number);
-    const prev = new Date(Date.UTC(y, m - 1, 1)); // first of previous month
-    prev.setUTCMonth(prev.getUTCMonth() - 1);
-    prev.setUTCDate(prev.getUTCDate() - 7 * (opts.lagWeeks || 0));
-    const end = new Date(Date.UTC(y, m, 0)); // last day of paid month
-    const iso = d => d.toISOString().slice(0, 10);
-    return { from: iso(prev), to: iso(end) };
+// Payment date for a weekly statement:
+//   statement week ENDS Saturday -> generated Sunday -> payment received the NEXT Friday
+//   = week-ending Saturday + 6 days.
+function paymentDate(weekEndingISO) {
+  const d = new Date(weekEndingISO + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toISOString().slice(0, 10);
+}
+
+// Predicate: should we download the statement whose week ENDS on `wk` (YYYY-MM-DD)?
+function makeWantWeek(opts) {
+  if (opts.all) return () => true;
+  if (opts.from || opts.to) {
+    const lo = opts.from || '0000-00-00', hi = opts.to || '9999-99-99';
+    return wk => wk >= lo && wk <= hi; // explicit window is on the week-ending date
   }
-  return { from: '0000-00-00', to: '9999-99-99' };
+  if (opts.paidMonth && opts.paidMonth !== true) {
+    return wk => paymentDate(wk).slice(0, 7) === opts.paidMonth; // payment lands in that month
+  }
+  return () => true;
 }
 
 const DATE_RE = /(\d{4}-\d{2}-\d{2})\s*(?:-|to|To)\s*(\d{4}-\d{2}-\d{2})/;
@@ -105,12 +111,12 @@ const DATE_RE = /(\d{4}-\d{2}-\d{2})\s*(?:-|to|To)\s*(\d{4}-\d{2}-\d{2})/;
     lagWeeks: parseInt(arg('lag-weeks', '0'), 10) || 0, route: arg('route', '1702'),
     out: arg('out'), headful: arg('headful') === true,
   };
-  const win = windowFor(opts);
+  const wantWeek = makeWantWeek(opts);
   const outDir = (opts.out && opts.out !== true) ? opts.out.replace(/^~/, os.homedir()) : defaultOutDir(opts.paidMonth);
   fs.mkdirSync(outDir, { recursive: true });
 
   const URL = process.env.OTTO_URL || 'https://orderonotto.ca/login.php';
-  const manifest = { outDir, window: win, downloaded: [], skipped: [], errors: [] };
+  const manifest = { outDir, paidMonth: opts.paidMonth || null, downloaded: [], skipped: [], errors: [] };
 
   const b = await chromium.launch({ headless: !opts.headful, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
   const ctx = await b.newContext({ viewport: { width: 1700, height: 1100 }, acceptDownloads: true });
@@ -151,58 +157,62 @@ const DATE_RE = /(\d{4}-\d{2}-\d{2})\s*(?:-|to|To)\s*(\d{4}-\d{2}-\d{2})/;
     }).catch(() => []);
     fs.writeFileSync(path.join(outDir, '_dom-dump.json'), JSON.stringify(dump, null, 2));
 
-    const inWindow = (from, to) => from >= win.from && from <= win.to || to >= win.from && to <= win.to;
-    const safeName = (from, to) => `Distributor Weekly Statement Route ${opts.route} From ${from} To ${to}.pdf`;
+    // The page shows ONE week at a time via the "Week Ending" mat-select (nth 1; Route # is nth 0).
+    // Selecting a week + "View Reports" lists that week's PDF links (direct tokenized URLs).
+    // IMPORTANT: reload /statements BEFORE each week — switching weeks without a reload leaves stale
+    // links in the DOM and can serve the wrong (prior-year) file. Enumerate weeks first, then loop.
+    const weekSel0 = p.locator('mat-select').nth(1);
+    await weekSel0.click().catch(() => {});
+    await p.waitForTimeout(1200);
+    let weeks = (await p.locator('mat-option').allInnerTexts().catch(() => []))
+      .map(s => s.trim()).filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s));
+    weeks = [...new Set(weeks)];
+    await p.keyboard.press('Escape').catch(() => {});
+    await p.waitForTimeout(400);
+    manifest.weeksAvailable = weeks;
 
-    // ---- Strategy A: direct <a> links to PDFs whose text carries the week window ----
-    const anchors = await p.$$eval('a', els => els.map(a => ({
-      text: (a.innerText || '').trim().replace(/\s+/g, ' '), href: a.href || a.getAttribute('href') || ''
-    })).filter(a => a.href && /\.pdf|statement|download/i.test(a.href + ' ' + a.text))).catch(() => []);
+    const targets = weeks.filter(wantWeek);
+    manifest.weeksSelected = targets.map(w => ({ weekEnding: w, paid: paymentDate(w) }));
+    for (const w of weeks) if (!wantWeek(w)) manifest.skipped.push({ week: w, paid: paymentDate(w), reason: 'payment not in target month' });
 
-    // ---- Strategy B: clickable rows/buttons that fire a download event ----
-    const clickables = await p.$$('tr, mat-row, [role="row"], button:has-text("Download"), a:has-text("Download")').catch(() => []);
+    const tokenFileKey = href => { // decode the JWT payload in ?token= to verify what OTTO will serve
+      try { const t = new URL(href).searchParams.get('token'); let s = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return JSON.parse(Buffer.from(s, 'base64').toString('utf8')).fileKey || ''; } catch (_) { return ''; }
+    };
 
-    // Build a candidate list: {label, from, to, kind, ref}
-    const candidates = [];
-    for (const a of anchors) {
-      const m = (a.text || '').match(DATE_RE) || (a.href || '').match(DATE_RE);
-      if (m) candidates.push({ from: m[1], to: m[2], kind: 'anchor', href: a.href, text: a.text });
-    }
-    for (let i = 0; i < clickables.length; i++) {
-      const t = (await clickables[i].innerText().catch(() => '')).replace(/\s+/g, ' ');
-      const m = t.match(DATE_RE);
-      if (m) candidates.push({ from: m[1], to: m[2], kind: 'click', handle: clickables[i], text: t });
-    }
-
-    // de-dupe by (from,to)
-    const seen = new Set();
-    for (const c of candidates) {
-      const key = c.from + '_' + c.to;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      if (!(opts.all || inWindow(c.from, c.to))) { manifest.skipped.push({ from: c.from, to: c.to, reason: 'out of window' }); continue; }
-      const dest = path.join(outDir, safeName(c.from, c.to));
+    for (const wk of targets) {
       try {
-        if (c.kind === 'anchor' && /^https?:/.test(c.href)) {
-          // fetch the PDF through the authenticated context
-          const resp = await ctx.request.get(c.href);
+        await p.goto('https://orderonotto.ca/statements', { waitUntil: 'networkidle', timeout: 30000 });
+        for (let i = 0; i < 8; i++) { await p.waitForTimeout(1500); if (await has('Available Statements')) break; }
+        const weekSel = p.locator('mat-select').nth(1);
+        await weekSel.click(); await p.waitForTimeout(1400);
+        await p.locator('mat-option').filter({ hasText: new RegExp('^\\s*' + wk + '\\s*$') }).first().click();
+        await p.waitForTimeout(1200);
+        await p.click('button:has-text("View Reports")').catch(() => {});
+        for (let i = 0; i < 8; i++) { await p.waitForTimeout(1300); if (await p.locator(`a:has-text("${wk}")`).count().catch(() => 0)) break; }
+
+        const links = await p.$$eval('a', els => els.map(a => ({
+          text: (a.innerText || '').trim().replace(/\s+/g, ' '), href: a.href || ''
+        })).filter(a => /get-file|\.pdf/i.test(a.href))).catch(() => []);
+        // ONLY the "Distributor Weekly Statement" file for THIS week (skip Revenue_Route / Route_Activity).
+        const wkLinks = links.filter(l => l.text.includes(wk) && /Distributor Weekly Statement/i.test(l.text));
+        if (!wkLinks.length) { manifest.errors.push({ week: wk, error: 'no Distributor Weekly Statement link found' }); continue; }
+        for (const l of wkLinks) {
+          const served = tokenFileKey(l.href);
+          if (served && !served.includes(wk)) { manifest.errors.push({ week: wk, error: 'served wrong file: ' + served }); continue; }
+          let name = l.text.replace(/[\/\\]/g, '-');
+          if (!/\.pdf$/i.test(name)) name += '.pdf';
+          const dest = path.join(outDir, name);
+          const resp = await ctx.request.get(l.href);
           const buf = await resp.body();
-          if (buf && buf.slice(0, 4).toString() === '%PDF') { fs.writeFileSync(dest, buf); manifest.downloaded.push({ from: c.from, to: c.to, file: dest, via: 'anchor' }); continue; }
+          if (buf && buf.slice(0, 4).toString() === '%PDF') { fs.writeFileSync(dest, buf); manifest.downloaded.push({ weekEnding: wk, paid: paymentDate(wk), file: name }); }
+          else manifest.errors.push({ week: wk, file: name, error: 'not a PDF (status ' + resp.status() + ')' });
         }
-        // fall back to a real click that triggers a browser download
-        const [dl] = await Promise.all([
-          p.waitForEvent('download', { timeout: 15000 }),
-          (c.handle ? c.handle.click() : p.click(`a[href="${c.href}"]`)),
-        ]);
-        await dl.saveAs(dest);
-        manifest.downloaded.push({ from: c.from, to: c.to, file: dest, via: 'download-event' });
       } catch (e) {
-        manifest.errors.push({ from: c.from, to: c.to, error: e.message });
+        manifest.errors.push({ week: wk, error: e.message });
       }
     }
 
-    manifest.candidatesFound = candidates.length;
-    if (!candidates.length) manifest.hint = 'No statements parsed. Inspect _statements-page.png and _dom-dump.json in the out dir and refine selectors.';
+    if (!weeks.length) manifest.hint = 'No week options parsed from the Week Ending dropdown. Inspect _statements-page.png / _dom-dump.json and refine the mat-select selector.';
   } catch (e) {
     manifest.fatal = e.message;
   }
