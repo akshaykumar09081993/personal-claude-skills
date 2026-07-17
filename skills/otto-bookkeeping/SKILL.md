@@ -47,11 +47,12 @@ The ledger shows a `Paid (Fri)` column and a `payment_date` CSV field. Omit `--p
 Cross-check: each week's **Deposit** equals the prior week's Balance Due (the deposit clears the previous
 balance) — handy for tying out against the bank ("Checking") statement.
 
-## ⚠️ Auto-detects OTTO's mislabeled (prior-year) files
-OTTO occasionally serves a PDF whose **content is a different (prior-year) week** than its filename claims
-(seen June 2026). The parser compares the filename week to the PDF's `FOR WEEK` line; on a mismatch it prints
-a loud warning (with statement number + the real content week) and **excludes that file from the ledger** so
-your totals stay clean. Follow up with Bimbo Route Accounting to get the correct statement, then re-run.
+## Internal-date quirk (some OTTO PDFs print the prior-year date)
+For some weeks OTTO prints a wrong (prior-year) date in the PDF's `FOR WEEK` line even though the file IS the
+correct statement for that week slot (confirmed with the user for June 2026 — weeks 06-06 & 06-13). The OTTO
+**filename week is authoritative**, so the parser uses it and just **notes** any internal-date discrepancy
+while still INCLUDING the row. The internal date is recorded in the `content_week_to` CSV column for audit.
+Pass `--strict` if you ever want to exclude files whose internal date differs.
 
 ## Filtering
 `--route 1702` (default; `all` for every route) · `--csv PATH` to place the ledger where you want (e.g. in

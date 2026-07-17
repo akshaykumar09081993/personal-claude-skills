@@ -74,14 +74,12 @@ reconcile against. Override with `--out DIR`.
 - Debug artifacts always written to the out dir: `_statements-page.png`, `_dom-dump.json` (use if selectors
   ever change / nothing downloads).
 
-## ⚠️ Known OTTO data error — mislabeled (prior-year) files
-For some week slots OTTO serves a PDF whose **content is the same week of the *previous year*** even though the
-filename/fileKey say the current year (seen June 2026: weeks 06-06 & 06-13 returned 2025 statements #0006/#0007
-instead of the real #0058/#0059). The filename check can't catch this — only reading the PDF body can. The
-**`otto-bookkeeping` parser detects it** (compares filename week vs the PDF's `FOR WEEK`), warns, and excludes
-the file from the ledger. When it flags one, contact **Bimbo Route Accounting** (Atlantic – John Nkuekue,
-listed on the statements page) to get the correct statement. Quarantine such files under
-`<out>/_otto-mislabeled/`.
+## Internal-date quirk (some OTTO PDFs print the prior-year date)
+For some week slots the served PDF prints the *previous year* in its `FOR WEEK` line and carries an
+out-of-sequence statement number (seen June 2026: weeks 06-06 & 06-13 show 2025 / #0006-#0007). Per the user
+these are still the **correct statements for that week** — OTTO's **filename/fileKey week is authoritative**,
+so the download keeps them. The `otto-bookkeeping` parser surfaces the discrepancy as a note (and via the
+`content_week_to` column); use its `--strict` flag only if you want to drop such files.
 
 ## Statement PDF anatomy (for reference / downstream parsing)
 Header: `ROUTE ID: 1702`, `STATEMENT NUMBER: WST…`, `FOR WEEK: YYYY-MM-DD - YYYY-MM-DD`. Money table has a

@@ -120,6 +120,8 @@ def main():
     ap.add_argument('--csv')
     ap.add_argument('--paid-month')
     ap.add_argument('--route', default='1702')
+    ap.add_argument('--strict', action='store_true',
+                    help="exclude files whose internal FOR WEEK date differs from the filename week")
     a = ap.parse_args()
 
     root = os.path.expanduser(a.dir)
@@ -144,23 +146,24 @@ def main():
         except Exception:
             r['payment_date'] = ''
         if r.get('mismatch'):
-            # OTTO served a file whose CONTENT is a different (prior-year) week — exclude from the ledger.
-            mismatches.append(r); continue
+            mismatches.append(r)
+            if a.strict:   # --strict: drop files whose internal date != filename week
+                continue
         recs.append(r)
 
     if mismatches:
-        print("\n⚠️  OTTO DATA ERROR — these week slots served a file whose CONTENT is a different week")
-        print("    (usually the prior year). EXCLUDED from the ledger. Ask Bimbo Route Accounting to fix:")
+        verb = "EXCLUDED (--strict)" if a.strict else "INCLUDED (OTTO filename week is authoritative)"
+        print(f"\nNote: OTTO printed a different (prior-year) 'FOR WEEK' date inside these files — {verb}:")
         for r in mismatches:
-            print(f"    • labelled {r['week_from']}..{r['week_to']}  but file contains week ending "
-                  f"{r['content_week_to']}  (stmt {r['statement_no']})")
+            print(f"    • week {r['week_from']}..{r['week_to']}  (file's internal FOR WEEK says "
+                  f"{r['content_week_to']}, stmt {r['statement_no']})")
         print()
 
     if not recs:
-        sys.exit("No valid (non-mismatched) statements matched the filters.")
+        sys.exit("No statements matched the filters.")
     recs.sort(key=lambda r: r['week_to'])
 
-    cols = ['week_from','week_to','payment_date','route','statement_no','product_total','total_credit',
+    cols = ['week_from','week_to','content_week_to','payment_date','route','statement_no','product_total','total_credit',
             'distributor_fees','distributor_fees_tax','fixed_distributor_fee','fixed_fee_tax',
             'deposit','total_manual_adj','balance_due_week','balance_due_ytd','file']
     out = os.path.expanduser(a.csv) if a.csv else os.path.join(root, 'statements-ledger.csv')
