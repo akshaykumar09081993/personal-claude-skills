@@ -79,6 +79,24 @@ def _forward(at, msg_id, me, datestr):
          json.dumps({"raw": out}).encode(), {"Content-Type": "application/json"})
 
 
+def _drive_exists(at, folder_id, name):
+    q = "name='%s' and '%s' in parents and trashed=false" % (name.replace("'", "\\'"), folder_id)
+    r = _req(f"{DRIVE}/files?q={urllib.parse.quote(q)}&fields=files(id)", at)
+    return bool(r.get("files"))
+
+
+def _already_sent(at, datestr):
+    """True if we've already forwarded this dated report to FORWARD_TO (checks Sent)."""
+    q = 'in:sent to:%s subject:("%s")' % (FORWARD_TO, SUBJECT_HINT)
+    r = _req(f"{GMAIL}/messages?q={urllib.parse.quote(q)}&maxResults=25", at)
+    for m in r.get("messages", []):
+        meta = _req(f"{GMAIL}/messages/{m['id']}?format=metadata&metadataHeaders=Subject", at)
+        for h in meta.get("payload", {}).get("headers", []):
+            if h["name"] == "Subject" and datestr in (h["value"] or ""):
+                return True
+    return False
+
+
 def _save_attachments(at, msg, folder_id, datestr):
     saved = []
     def walk(part):
@@ -87,9 +105,11 @@ def _save_attachments(at, msg, folder_id, datestr):
         fn = part.get("filename")
         body = part.get("body", {})
         if fn and body.get("attachmentId"):
+            name = f"Costco_Sales_{datestr}_{fn.replace(' ', '_')}"
+            if _drive_exists(at, folder_id, name):   # already copied -> skip
+                return
             data = _req(f"{GMAIL}/messages/{msg['id']}/attachments/{body['attachmentId']}", at)
             content = base64.urlsafe_b64decode(data["data"])
-            name = f"Costco_Sales_{datestr}_{fn.replace(' ', '_')}"
             _drive_upload(at, folder_id, name,
                           part.get("mimeType", "application/octet-stream"), content)
             saved.append(name)
@@ -114,11 +134,12 @@ def costco(request):
     me = _my_email(at)
     label_id = _get_label_id(at)
     folder_id = _folder_id(at)
-    q = (f'from:noreply@costco.com subject:("{SUBJECT_HINT}") '
-         f'newer_than:2d -label:{LABEL_NAME}')
+    # Skip anything already handled (label); the per-action checks below are extra
+    # safety against duplicate sends/copies (e.g. after a partial failure).
+    q = f'from:noreply@costco.com subject:("{SUBJECT_HINT}") newer_than:3d -label:{LABEL_NAME}'
     res = _req(f"{GMAIL}/messages?q={urllib.parse.quote(q)}&maxResults=25", at)
     ids = [m["id"] for m in res.get("messages", [])]
-    processed = []
+    actions = []
     for mid in ids:
         full = _req(f"{GMAIL}/messages/{mid}?format=full", at)
         subj, date_hdr = "", ""
@@ -135,12 +156,23 @@ def costco(request):
         except Exception:
             dt = datetime.datetime.utcfromtimestamp(int(full["internalDate"]) / 1000)
         datestr = dt.strftime("%Y-%m-%d")
-        _forward(at, mid, me, datestr)
-        _save_attachments(at, full, folder_id, datestr)
+
+        # 1) forward ONLY if not already sent to FORWARD_TO (checks Sent mail)
+        if _already_sent(at, datestr):
+            fwd = datestr + ":already-sent"
+        else:
+            _forward(at, mid, me, datestr)
+            fwd = datestr + ":forwarded"
+
+        # 2) save attachments ONLY if not already in the Drive folder (checked per file)
+        saved = _save_attachments(at, full, folder_id, datestr)
+        drv = ("saved=" + ",".join(saved)) if saved else (datestr + ":already-in-drive")
+
+        # mark for visibility (harmless if already labeled)
         _req(f"{GMAIL}/messages/{mid}/modify", at, "POST",
              json.dumps({"addLabelIds": [label_id]}).encode(),
              {"Content-Type": "application/json"})
-        processed.append(mid)
-    msg = f"Processed {len(processed)} Costco message(s): {processed}"
+        actions.append("[" + fwd + "; " + drv + "]")
+    msg = f"Costco run: {len(ids)} candidate(s). " + " ".join(actions)
     print(msg)
     return (msg, 200)
