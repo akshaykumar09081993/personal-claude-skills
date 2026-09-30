@@ -25,6 +25,8 @@ ap.add_argument('--out', default=None)
 ap.add_argument('--exclude', default='', help='comma-separated customer ids to leave out')
 ap.add_argument('--group', default='none', choices=['none', 'costco'],
                 help='costco = separate Costco sheet + one sheet for all others')
+ap.add_argument('--drop-empty-stores', action='store_true',
+                help='drop store columns whose total is 0 for the whole day')
 args = ap.parse_args()
 
 data = json.load(open(args.data))
@@ -74,6 +76,24 @@ if full_day_label is None:
     sys.exit(f'No records contain day "{DATE}". Check the date or the data file.')
 
 cols_all = [c for c in store_order if c['id'] in stores_with_data]
+
+# optionally drop stores that are 0 across every product that day (e.g. the DST holding account)
+if args.drop_empty_stores:
+    cols_all = [c for c in cols_all
+                if sum(p['vals'].get(c['id'], 0) for p in products.values()) > 0]
+
+# order stores by location (first-appearance), and within a location put DL before GR
+def _locnum(name):
+    m = re.search(r'\b(\d{3,6})\b', name)
+    return m.group(1) if m else name.upper()
+def _typerank(name):
+    u = name.upper().lstrip()
+    return 0 if u.startswith('DL') else 1 if u.startswith('GR') else 2
+_loc_order = {}
+for c in cols_all:
+    k = _locnum(c['name'])
+    if k not in _loc_order: _loc_order[k] = len(_loc_order)
+cols_all.sort(key=lambda c: (_loc_order[_locnum(c['name'])], _typerank(c['name'])))
 
 # ---------- styles ----------
 hdr_font = Font(bold=True, color='FFFFFF'); hdr_fill = PatternFill('solid', fgColor='305496')

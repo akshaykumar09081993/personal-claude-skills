@@ -47,6 +47,10 @@ python3 scripts/pick_sheet.py --date Oct-1 \
 | `--out`  | Output `.xlsx` (default `PickSheet_<date>.xlsx`). |
 | `--exclude` | Comma-separated **customer ids** to leave out of the columns. |
 | `--group` | `none` (default) = one sheet. `costco` = a **"Costco"** sheet (stores with COSTCO in the name) + an **"Other stores"** sheet for the rest; each sheet drops products that are 0 across *its own* stores. |
+| `--drop-empty-stores` | Drop any store **column** whose total is 0 for the whole day (e.g. the DST holding account). |
+
+Store columns are ordered by location (first appearance), and within a location **DL comes before GR**
+(so DL/deli sits left of the grocery column for the same store).
 
 ### What you get
 - One worksheet per group (see `--group`), each **A4 landscape, fit-to-one-page-wide, header row repeats on every printed page**,
