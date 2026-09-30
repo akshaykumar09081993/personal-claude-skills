@@ -105,6 +105,15 @@ For specific jobs use: **`otto-stale-check`** (returns/over-ordering), **`otto-o
 how much to order), **`otto-week-execution`** (what's on sale + displays/MOD from Useful Information). All
 scope to our own stores and build on this skill's login/navigation mechanics.
 
+## Reusable scraping client (for building new scheduled agents)
+When writing a **new automated OTTO scraper/agent**, do NOT re-implement login/pagination. Reuse the shared
+client in the RouteSalesTracker repo: **`otto-dashboard/agents/otto/lib/otto.js`** (repo:
+`akshaykumar09081993/routeSalesTracker`, cloned at `~/Documents/claude/otto-dashboard`). It exports
+`connect()` (launch + login with blank-render retry), `goto()`, `downloadPdfLinks()`, `readCredentials()`,
+`dataDir()`. Copy **`agents/otto/dl_template.js`** to start; see **`agents/otto/README.md`** for the full
+how-to (routes, wiring into the orchestrator's schedule, examples: catalog/tray-factors, promotions,
+Costco TPD, statements). Credentials come from `~/.config/otto/credentials.json` (never committed).
+
 ## Quick start (bundled helper)
 ```bash
 OTTO_USERNAME='...' OTTO_PASSWORD='...' \
