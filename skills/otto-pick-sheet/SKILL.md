@@ -36,7 +36,8 @@ days is a pure local transform — **no re-scrape needed** to change the date.
 python3 scripts/pick_sheet.py --date Oct-1 \
   --data otto-orders.json \
   --out PickSheet_Oct-1.xlsx \
-  --exclude 1193808,1193811        # e.g. leave out SUN COSTCO + MON COSTCO accounts
+  --exclude 1193808,1193811 \      # e.g. leave out SUN COSTCO + MON COSTCO accounts
+  --group costco                   # Costco on its own sheet, all others on one sheet
 ```
 
 | Flag | Meaning |
@@ -45,9 +46,10 @@ python3 scripts/pick_sheet.py --date Oct-1 \
 | `--data` | Orders JSON from `dl_orders.js` (default `otto-orders.json`). |
 | `--out`  | Output `.xlsx` (default `PickSheet_<date>.xlsx`). |
 | `--exclude` | Comma-separated **customer ids** to leave out of the columns. |
+| `--group` | `none` (default) = one sheet. `costco` = a **"Costco"** sheet (stores with COSTCO in the name) + an **"Other stores"** sheet for the rest; each sheet drops products that are 0 across *its own* stores. |
 
 ### What you get
-- One worksheet, **A4 landscape, fit-to-one-page-wide, header row repeats on every printed page**,
+- One worksheet per group (see `--group`), each **A4 landscape, fit-to-one-page-wide, header row repeats on every printed page**,
   gridlines on, narrow margins, footer with page numbers — ready to **File ▸ Print** as-is.
 - Columns: `Code | Product | <store…> | Total`; a bold **TOTAL** row sums each store column.
 - **Code = the Bimbo article code** (2nd part of the sku, always present). The product name's leading
