@@ -40,11 +40,9 @@ def product_codes(pr):
     sku  = "068721210146 - 921964"                   (UPC - Bimbo article code)
     Prefers explicit fields (code/upc/bimboCode) if the scraper provided them."""
     name = pr.get('name', '') or ''
-    parts = name.split(' ', 1)
-    if parts and parts[0].isdigit():
-        material, desc = parts[0], (parts[1] if len(parts) > 1 else '')
-    else:
-        material, desc = '', name
+    import re
+    m = re.match(r'^(\d+)\s*(.*)$', name)   # leading material code, glued or space-separated
+    material, desc = (m.group(1), m.group(2)) if m else ('', name)
     sku = pr.get('sku', '') or ''
     if ' - ' in sku:
         upc, bimbo = [s.strip() for s in sku.split(' - ', 1)]
