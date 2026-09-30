@@ -82,10 +82,14 @@ if args.drop_empty_stores:
     cols_all = [c for c in cols_all
                 if sum(p['vals'].get(c['id'], 0) for p in products.values()) > 0]
 
-# order stores by location (first-appearance), and within a location put DL before GR
+# order stores by location (first-appearance), and within a location put DL before GR.
+# location key = store name with the leading DL/GR (and DELI) stripped, so DL/GR variants of
+# the same store group together even when the name has no store number (e.g. Herring Cove).
 def _locnum(name):
-    m = re.search(r'\b(\d{3,6})\b', name)
-    return m.group(1) if m else name.upper()
+    k = re.sub(r'^\s*(DL|GR)\b', '', name, flags=re.I)
+    k = re.sub(r'\bDELI\b', '', k, flags=re.I)
+    k = re.sub(r"[^a-z0-9]+", " ", k.lower()).strip()
+    return k or name.lower()
 def _typerank(name):
     u = name.upper().lstrip()
     return 0 if u.startswith('DL') else 1 if u.startswith('GR') else 2
