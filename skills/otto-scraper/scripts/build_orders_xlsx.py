@@ -89,8 +89,10 @@ for i, c in enumerate(data.get('customers', [])):
 ws.column_dimensions['A'].width = 14; ws.column_dimensions['B'].width = 38; ws.column_dimensions['C'].width = 30
 
 # ---------------- All Orders (flat) ----------------
+# "Code" = Bimbo article code (always present, 2nd part of the sku). UPC = barcode. Material code
+# (leading number in the product name) exists only for some stores, so it's an extra trailing column.
 fs = wb.create_sheet('All Orders')
-cols = ['Store ID', 'Store', 'Week', 'Material Code', 'Product', 'UPC', 'Bimbo Code', 'TF', '4wk Rtn%'] + WK + ['Week Total']
+cols = ['Store ID', 'Store', 'Week', 'Code', 'Product', 'UPC', 'TF', '4wk Rtn%'] + WK + ['Week Total', 'Material Code']
 fs.append(cols); style_header(fs, 1, len(cols))
 for rec in records:
     wdays = [weekday(d) for d in rec['days']]
@@ -98,12 +100,12 @@ for rec in records:
     for pr in rec['products']:
         fo = pr['fo']
         material, desc, upc, bimbo = product_codes(pr)
-        row = [rec['customerId'], rec['customerName'], rec['week'], material, desc, upc, bimbo, pr.get('tf', ''), pr.get('rtn4wk', '')]
+        row = [rec['customerId'], rec['customerName'], rec['week'], bimbo, desc, upc, pr.get('tf', ''), pr.get('rtn4wk', '')]
         row += [fo[idx[d]] if d in idx and idx[d] < len(fo) else 0 for d in WK]
-        row += [pr.get('weekTotalFO', sum(fo))]
+        row += [pr.get('weekTotalFO', sum(fo)), material]
         fs.append(row)
 fs.freeze_panes = 'A2'
-widths = [12, 34, 6, 14, 38, 14, 12, 6, 9] + [6] * 7 + [11]
+widths = [12, 34, 6, 10, 38, 14, 6, 9] + [6] * 7 + [11, 13]
 for i, w in enumerate(widths): fs.column_dimensions[get_column_letter(i + 1)].width = w
 
 # ---------------- Per-store sheets ----------------
@@ -136,7 +138,7 @@ for (cid, cname), recs in by_store.items():
         col_sums = [0] * ndays
         for pr in rec['products']:
             material, desc, upc, bimbo = product_codes(pr)
-            ws.cell(row=r, column=1, value=material)
+            ws.cell(row=r, column=1, value=bimbo)   # Bimbo article code (always present)
             ws.cell(row=r, column=2, value=desc)
             for j, v in enumerate(pr['fo']):
                 ws.cell(row=r, column=D0 + j, value=v)
