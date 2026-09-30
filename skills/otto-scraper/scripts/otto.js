@@ -225,7 +225,13 @@ function readGridPage(page) {
       const dayCells = cols.slice(1).filter(c => c.classList.contains('day') && !c.classList.contains('totals')).slice(0, 7);
       const fo = dayCells.map(foOf), so = dayCells.map(soOf);
       const tot = cols.slice(1).find(c => c.classList.contains('totals'));
-      products.push({ name: nameSpan ? nameSpan.innerText.trim() : '', sku: skuP ? skuP.innerText.trim() : '',
+      // product codes: name = "<materialCode> <description>", sku = "<UPC> - <bimboCode>"
+      const name = nameSpan ? nameSpan.innerText.trim() : '';
+      const sku = skuP ? skuP.innerText.trim() : '';
+      const nm = name.split(' '); const code = /^\d+$/.test(nm[0] || '') ? nm[0] : '';
+      const description = code ? name.slice(code.length).trim() : name;
+      const skuParts = sku.includes(' - ') ? sku.split(' - ').map(s => s.trim()) : [sku, ''];
+      products.push({ name, description, code, sku, upc: skuParts[0], bimboCode: skuParts[1],
         rtn4wk: rtn ? rtn.innerText.trim() : '', tf: tf ? tf.innerText.trim() : '',
         fo, so, weekTotalFO: tot ? foOf(tot) : fo.reduce((a, x) => a + x, 0) });
     }

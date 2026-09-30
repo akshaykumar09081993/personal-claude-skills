@@ -76,7 +76,7 @@ app paints but **before** the controls are interactive — call `waitOrderingHub
 | `listWeeks(page)` | Week numbers in the Week dropdown (rolling ~12-week window), `(Current)` stripped. |
 | `selectWeek(page,wk)` | Select a week (Route=`mat-select` nth 0, Week=nth 1, page-size=nth 2). Returns bool. |
 | `setPageSize(page,n)` | Paginator items-per-page (options **5/10/25/35** — max 35, so you still paginate). |
-| `readGridPage(page)` | Read the current page: `{week,days[7],products[{name,sku,rtn4wk,tf,fo[7],so[7],weekTotalFO}],grandDays[7],pageInfo}`. |
+| `readGridPage(page)` | Read the current page: `{week,days[7],products[{name,description,code,sku,upc,bimboCode,rtn4wk,tf,fo[7],so[7],weekTotalFO}],grandDays[7],pageInfo}`. |
 | `collectOrderGrid(page,wk)` | **Walk every paginator page** for the selected week → `{week,days,products,grandDays}`. Call `selectWeek` first. |
 | `clearOverlays(page)` | Remove `.cdk-overlay-backdrop` (they intercept clicks) + close open panels. |
 
@@ -123,11 +123,29 @@ Log in by: `goto` `https://orderonotto.ca/login.php` → fill `#mat-input-0` (em
 contains `Product`/`F.O.`, reloading `/ordering-hub/routes` if still blank after ~12s. Then navigate
 and read/download. Full nav mechanics: see the `orderonotto-ordering` skill.
 
+## Order export → Excel (full flow)
+
+To answer "export all our orders to a spreadsheet", run the two bundled scripts in sequence:
+
+```bash
+# 1) scrape every customer × every week to JSON (resumable; fresh browser per store)
+NODE_PATH=~/Documents/claude/node_modules OTTO_USERNAME=.. OTTO_PASSWORD=.. \
+  node scripts/dl_orders.js                       # -> ./otto-orders.json
+
+# 2) build the workbook from that JSON  (needs: pip install openpyxl)
+python3 scripts/build_orders_xlsx.py otto-orders.json OTTO_Orders.xlsx
+```
+
+`build_orders_xlsx.py` produces a workbook with: **Summary**, **All Orders** (flat/pivot-ready table,
+one row per store×week×product with Sun–Sat + week total), **one sheet per store** (weekly grids with
+a computed TOTAL row, OTTO's Grand Total row, and a Match? row), and a **Verification** sheet
+(column-sum vs Grand Total per store-week, OK/MISMATCH). It consumes `dl_orders.js` output as-is.
+
 ## Working examples
 
 - `scripts/dl_orders.js` — exports Final Orders for **every customer × every week** to JSON with
-  per-day Grand-Total verification (fresh browser per store, resume, pagination). Turn the JSON into
-  a spreadsheet downstream (e.g. Python `openpyxl`).
+  per-day Grand-Total verification (fresh browser per store, resume, pagination).
+- `scripts/build_orders_xlsx.py` — turns that JSON into the Excel workbook described above.
 
 Live, scheduled versions built on this client are in the RouteSalesTracker repo
 (`akshaykumar09081993/routeSalesTracker`, cloned at `~/Documents/claude/otto-dashboard`):
