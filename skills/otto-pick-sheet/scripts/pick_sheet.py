@@ -95,11 +95,16 @@ for c in cols_all:
     if k not in _loc_order: _loc_order[k] = len(_loc_order)
 cols_all.sort(key=lambda c: (_loc_order[_locnum(c['name'])], _typerank(c['name'])))
 
-# ---------- styles ----------
-hdr_font = Font(bold=True, color='FFFFFF'); hdr_fill = PatternFill('solid', fgColor='305496')
-bold = Font(bold=True); zero_font = Font(color='BFBFBF')
-tot_fill = PatternFill('solid', fgColor='FCE4D6')
-thin = Side(style='thin', color='D9D9D9'); border = Border(left=thin, right=thin, top=thin, bottom=thin)
+# ---------- styles (black & white print friendly — no bright colors, crisp Arial) ----------
+FONT = 'Arial'
+title_font = Font(name=FONT, bold=True, size=14, color='000000')
+hdr_font = Font(name=FONT, bold=True, size=10, color='000000'); hdr_fill = PatternFill('solid', fgColor='D9D9D9')
+base_font = Font(name=FONT, size=10, color='000000')            # Code / Product text
+bold = Font(name=FONT, bold=True, size=10, color='000000')
+num_font = Font(name=FONT, bold=True, size=11, color='000000')  # order quantities: bold black, larger
+zero_font = Font(name=FONT, size=10, color='B0B0B0')            # zeros: faint grey so real picks pop
+tot_fill = PatternFill('solid', fgColor='D9D9D9')
+thin = Side(style='thin', color='808080'); border = Border(left=thin, right=thin, top=thin, bottom=thin)
 center = Alignment(horizontal='center')
 
 def add_sheet(wb, title, cols_stores):
@@ -111,12 +116,16 @@ def add_sheet(wb, title, cols_stores):
         total = sum(p['vals'].get(c['id'], 0) for c in cols_stores)
         if total > 0:
             rows.append((p, total))
-    rows.sort(key=lambda x: (x[0]['desc'] or ''))
+    # sort by the product code number (numeric codes first, then any non-numeric by text)
+    def _code_key(p):
+        c = (p['code'] or '').strip()
+        return (0, int(c), '') if c.isdigit() else (1, 0, c)
+    rows.sort(key=lambda x: _code_key(x[0]))
 
     ws = wb.create_sheet(title[:31])
     ncol = 2 + len(cols_stores) + 1
     ws['A1'] = f'PICK SHEET — {full_day_label} — {title}   (Route {data.get("route","")})'
-    ws['A1'].font = Font(bold=True, size=14)
+    ws['A1'].font = title_font
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncol)
     ws.append([])
     ws.append(['Code', 'Product'] + [c['name'] for c in cols_stores] + ['Total'])
@@ -134,9 +143,11 @@ def add_sheet(wb, title, cols_stores):
         r.append(total)
         ws.append(r)
         rr = ws.max_row
+        ws.cell(row=rr, column=1).font = base_font          # Code
+        ws.cell(row=rr, column=2).font = base_font          # Product
         for k in range(len(cols_stores)):
             cell = ws.cell(row=rr, column=3 + k); cell.alignment = center
-            if not cell.value: cell.font = zero_font
+            cell.font = num_font if cell.value else zero_font
         tc = ws.cell(row=rr, column=ncol); tc.font = bold; tc.alignment = center
 
     ws.append(['', 'TOTAL'] + store_totals + [sum(store_totals)])

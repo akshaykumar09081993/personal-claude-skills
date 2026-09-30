@@ -55,11 +55,15 @@ Store columns are ordered by location (first appearance), and within a location 
 ### What you get
 - One worksheet per group (see `--group`), each **A4 landscape, fit-to-one-page-wide, header row repeats on every printed page**,
   gridlines on, narrow margins, footer with page numbers — ready to **File ▸ Print** as-is.
+- **Black-&-white-print friendly**: no bright colors — light-grey header/TOTAL bands, **crisp Arial**,
+  order quantities in **bold black** (slightly larger) so they stand out, zeros in faint grey so the
+  real picks pop, thin grey gridlines.
 - Columns: `Code | Product | <store…> | Total`; a bold **TOTAL** row sums each store column.
 - **Code = the Bimbo article code** (2nd part of the sku, always present). The product name's leading
   material number is stripped from the description (handles both `1290542 NAME` and glued `197085NAME`).
-- **Rows dropped** when the product is 0 at every included store that day; rows sorted by product name.
-- Only stores that actually have data for that day appear as columns (minus `--exclude`).
+- **Rows sorted by Code number** (ascending); dropped when the product is 0 at every included store that day.
+- Store columns ordered by location with **DL before GR**; only stores with data that day appear
+  (minus `--exclude`, and minus all-zero stores when `--drop-empty-stores`).
 
 ## Gotchas
 - `--date` must match how the grid labels the day (`Mmm-D`, e.g. `Oct-1` not `October 1`). Run without
