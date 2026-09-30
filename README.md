@@ -22,6 +22,7 @@ skills on each launch).
 |-------|--------------|
 | [`accessing-google-drive`](skills/accessing-google-drive/SKILL.md) | List, search, browse, read, and download the user's Google Drive files. Bypasses the broken `drivemcp` MCP by calling the Google Drive REST API with the token stored in the macOS keychain. |
 | [`orderonotto-ordering`](skills/orderonotto-ordering/SKILL.md) | Core OTTO portal skill — log in, pick route/customer/week, read the order grid (S.O./ADJ/F.O./SFO, returns %, ★ on-sale), plus Reporting ($/units/returns) & Statements. Login/nav reference for the OTTO task skills. |
+| [`otto-scraper`](skills/otto-scraper/SKILL.md) | **Build new automated OTTO scrapers/agents** — bundles a reusable Playwright client (`connect`/login-with-blank-render-retry, `goto`, `downloadPdfLinks`) so you never rewrite the boilerplate. Copy `scripts/dl_template.js` to start. |
 | [`otto-stale-check`](skills/otto-stale-check/SKILL.md) | Find over-ordered / stale products (returns) for our stores and how much to cut — via Reporting Return % + the grid's SFO−F.O. variance. |
 | [`otto-ordering`](skills/otto-ordering/SKILL.md) | Decide how much to order for our stores — forecast demand from sales (SFO), sale-aware (★), + all the demand factors; set slightly above sales, round to TF. |
 | [`otto-week-execution`](skills/otto-week-execution/SKILL.md) | Plan the week for our stores from the Useful Information docs — what's on sale/featured + what goes on which display/where (MOD). |
