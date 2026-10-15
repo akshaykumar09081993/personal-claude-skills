@@ -15,7 +15,23 @@ TOKEN        = json.loads(os.environ["TOKEN_JSON"])
 
 GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
 DRIVE = "https://www.googleapis.com/drive/v3"
-UPLOAD = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name"
+# NOTE: no convert/ocr params -> Drive stores the bytes as-is and never turns the
+# .xlsx into a Google Sheet.
+UPLOAD = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType"
+
+# Force a correct file type by extension so Drive always shows a proper Excel file,
+# instead of trusting whatever (often generic octet-stream) type Gmail reports.
+EXT_MIME = {
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls":  "application/vnd.ms-excel",
+    ".csv":  "text/csv",
+    ".pdf":  "application/pdf",
+}
+
+
+def _mime_for(filename, fallback):
+    ext = os.path.splitext(filename)[1].lower()
+    return EXT_MIME.get(ext, fallback)
 
 
 def _access_token():
@@ -110,8 +126,8 @@ def _save_attachments(at, msg, folder_id, datestr):
                 return
             data = _req(f"{GMAIL}/messages/{msg['id']}/attachments/{body['attachmentId']}", at)
             content = base64.urlsafe_b64decode(data["data"])
-            _drive_upload(at, folder_id, name,
-                          part.get("mimeType", "application/octet-stream"), content)
+            mime = _mime_for(fn, part.get("mimeType", "application/octet-stream"))
+            _drive_upload(at, folder_id, name, mime, content)
             saved.append(name)
     walk(msg["payload"])
     return saved
@@ -119,7 +135,9 @@ def _save_attachments(at, msg, folder_id, datestr):
 
 def _drive_upload(at, folder_id, name, mime, content):
     boundary = "==costcoboundary=="
-    meta = json.dumps({"name": name, "parents": [folder_id]}).encode()
+    # Set mimeType in the metadata too, so Drive records the file as a proper
+    # Excel file (and not the generic/converted type it would otherwise infer).
+    meta = json.dumps({"name": name, "parents": [folder_id], "mimeType": mime}).encode()
     body = (b"--" + boundary.encode() + b"\r\n"
             b"Content-Type: application/json; charset=UTF-8\r\n\r\n" + meta + b"\r\n"
             b"--" + boundary.encode() + b"\r\n"

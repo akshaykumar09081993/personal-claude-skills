@@ -2,7 +2,7 @@
 name: costco-forward-automation
 description: >-
   Manage/inspect the Costco daily sales email automation running in Google Cloud for
-  sparklinxgroup. Each day (~9 AM Halifax) a Cloud Scheduler job triggers a Gen2 Cloud
+  sparklinxgroup. Each day (~7:30 AM Halifax) a Cloud Scheduler job triggers a Gen2 Cloud
   Function that finds the "Costco Last 7 Days Sales - CANADA BREAD" email from
   noreply@costco.com, forwards it to tlaceycanadabread@hotmail.com, saves the .xlsx
   attachment to a Drive folder "costco", and labels it "costco-forwarded" so it never
@@ -16,7 +16,7 @@ description: >-
 Fully cloud-hosted; the laptop is only used to deploy/manage via `gcloud`.
 
 ## Architecture
-`Cloud Scheduler (costco-daily-9am, 0 9 * * * America/Halifax)`
+`Cloud Scheduler (costco-daily-730am, 30 7 * * * America/Halifax)`
 → OIDC POST → `Cloud Function Gen2 "costco-daily"` (region us-central1, entry `costco`)
 → refreshes a user OAuth token (gmail.modify + drive.file) from **Secret Manager**
 → Gmail search → **forward** to `tlaceycanadabread@hotmail.com` → **save .xlsx** to Drive
@@ -31,19 +31,28 @@ folder `costco` → add Gmail label `costco-forwarded`.
 - Source of truth: `scripts/main.py` (+ `requirements.txt`)
 
 ## Common tasks (run with `gcloud config set project sparklinxgroup` first)
-- **Run it now (real — forwards to tlacey):** `gcloud scheduler jobs run costco-daily-9am --location us-central1`
+- **Run it now (real — forwards to tlacey):** `gcloud scheduler jobs run costco-daily-730am --location us-central1`
 - **See logs:** `gcloud functions logs read costco-daily --region us-central1 --gen2 --limit 50`
 - **Change recipient/folder/subject:** `gcloud functions deploy costco-daily --region us-central1 --update-env-vars FORWARD_TO=...`
-- **Change schedule/time:** `gcloud scheduler jobs update http costco-daily-9am --location us-central1 --schedule "0 9 * * *" --time-zone America/Halifax`
+- **Change schedule/time:** `gcloud scheduler jobs update http costco-daily-730am --location us-central1 --schedule "30 7 * * *" --time-zone America/Halifax`
 - **Redeploy code:** edit `scripts/main.py`, then
   `gcloud functions deploy costco-daily --gen2 --runtime python312 --region us-central1 --source <dir> --entry-point costco --trigger-http --no-allow-unauthenticated --service-account costco-fn@sparklinxgroup.iam.gserviceaccount.com --set-secrets TOKEN_JSON=costco-oauth-token:latest`
-- **Pause / resume:** `gcloud scheduler jobs pause|resume costco-daily-9am --location us-central1`
+- **Pause / resume:** `gcloud scheduler jobs pause|resume costco-daily-730am --location us-central1`
 
 ## Token / auth notes
 - The OAuth token is a **user** refresh token (a service account can't read a consumer @gmail.com).
+- **Durability:** the OAuth consent screen (project `sparklinxgroup`, app "drive-mcp") MUST be
+  **External + "In production"**. In "Testing" Google force-expires refresh tokens after 7 days.
+  "Internal" does NOT work — the project is in an org but `sparklinxgroup@gmail.com` is a consumer
+  account outside it (consent returns `Error 403: org_internal`). Production is unverified, so at
+  mint time click **Advanced → Go to <app> (unsafe)** to proceed past the warning.
+  Consent-screen pages: https://console.cloud.google.com/auth/audience?project=sparklinxgroup
+  Homepage/privacy URLs required to publish are hosted at
+  https://akshaykumar09081993.github.io/personal-claude-skills/ (docs/ in this repo).
 - Re-mint it if revoked/expired: run `scripts/get_combined_token.py` locally (browser consent for
   gmail.modify + drive.file), then push a new secret version:
   `gcloud secrets versions add costco-oauth-token --data-file ~/.gmail-mcp/automation-token.json`.
+  Validate: the token should refresh (not HTTP 400) before deploying.
 - Drive scope is `drive.file` (least privilege) — the function only sees the folder/files it creates.
 
 ## Gotchas
@@ -53,5 +62,15 @@ folder `costco` → add Gmail label `costco-forwarded`.
 - Cloud Functions/Run/Scheduler require **billing enabled** (it is).
 - The Costco email carries the data as an **.xlsx attachment**; forwarding preserves it and the
   archive saves that xlsx (not a PDF of the HTML).
+- **File type:** `main.py` forces the Drive mimeType by file extension (`EXT_MIME`/`_mime_for`) so
+  the saved file is a proper `.xlsx` (`...spreadsheetml.sheet`). Earlier versions trusted Gmail's
+  type and saved files as generic `application/xlsx` — don't revert that.
+- If an invocation logs `lacks run.routes.invoke` right after a redeploy, it's just IAM
+  propagation on the new Cloud Run revision — wait ~45s and re-run; the `run.invoker` binding on
+  `costco-fn@` must exist on the `costco-daily` Run service.
+- The whole stack (fn + scheduler + secret + SA) was manually deleted once (2026-09-28 under the
+  owner's own account) and rebuilt 2026-10-15. If it's "gone", check audit logs; a full rebuild
+  sequence is: create SA → create secret + version → grant secretAccessor → deploy fn → grant
+  run.invoker → create scheduler job → test run.
 
 Related: [[gmail-mcp-setup]] (interactive Gmail via MCP for ad-hoc tasks).
