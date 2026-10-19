@@ -90,6 +90,14 @@ def _forward(at, msg_id, me, datestr):
     m["From"] = me
     m["To"] = FORWARD_TO
     m["Subject"] = "Fwd: " + subj + " - " + datestr
+    # rename the attachment Todd receives to costco_<date>.<ext> (clean, dated name)
+    for part in m.walk():
+        afn = part.get_filename()
+        if afn:
+            ext = os.path.splitext(afn)[1].lower() or ".xlsx"
+            newfn = f"costco_{datestr}{ext}"
+            part.set_param("filename", newfn, header="Content-Disposition")
+            part.set_param("name", newfn, header="Content-Type")
     out = base64.urlsafe_b64encode(m.as_bytes()).decode()
     _req(f"{GMAIL}/messages/send", at, "POST",
          json.dumps({"raw": out}).encode(), {"Content-Type": "application/json"})
@@ -121,7 +129,8 @@ def _save_attachments(at, msg, folder_id, datestr):
         fn = part.get("filename")
         body = part.get("body", {})
         if fn and body.get("attachmentId"):
-            name = f"Costco_Sales_{datestr}_{fn.replace(' ', '_')}"
+            ext = os.path.splitext(fn)[1].lower() or ".xlsx"
+            name = f"costco_{datestr}{ext}"           # e.g. costco_2026-10-18.xlsx
             if _drive_exists(at, folder_id, name):   # already copied -> skip
                 return
             data = _req(f"{GMAIL}/messages/{msg['id']}/attachments/{body['attachmentId']}", at)
@@ -147,7 +156,42 @@ def _drive_upload(at, folder_id, name, mime, content):
          {"Content-Type": f"multipart/related; boundary={boundary}"})
 
 
+def _notify(text):
+    """Send a push notification if NOTIFY_JSON is configured. Provider-agnostic:
+    telegram -> {"provider":"telegram","bot_token":"..","chat_id":".."}
+    discord  -> {"provider":"discord","webhook":"https://discord.com/api/webhooks/.."}
+    No-op (and never fatal) if unconfigured or on error."""
+    cfg = os.environ.get("NOTIFY_JSON")
+    if not cfg:
+        return
+    try:
+        c = json.loads(cfg)
+        p = c.get("provider")
+        if p == "telegram":
+            u = f"https://api.telegram.org/bot{c['bot_token']}/sendMessage"
+            data = urllib.parse.urlencode({"chat_id": c["chat_id"], "text": text}).encode()
+            urllib.request.urlopen(urllib.request.Request(u, data=data), timeout=15)
+        elif p == "discord":
+            data = json.dumps({"content": text}).encode()
+            # Discord/Cloudflare rejects the default python-urllib UA (403 err 1010);
+            # any explicit User-Agent passes.
+            urllib.request.urlopen(urllib.request.Request(
+                c["webhook"], data=data,
+                headers={"Content-Type": "application/json",
+                         "User-Agent": "costco-automation/1.0"}), timeout=15)
+    except Exception as e:
+        print("notify failed:", e)
+
+
 def costco(request):
+    try:
+        return _run()
+    except Exception as e:
+        _notify(f"⚠️ Costco automation FAILED today (no report sent) — {type(e).__name__}: {e}")
+        raise
+
+
+def _run():
     at = _access_token()
     me = _my_email(at)
     label_id = _get_label_id(at)
@@ -158,6 +202,8 @@ def costco(request):
     res = _req(f"{GMAIL}/messages?q={urllib.parse.quote(q)}&maxResults=25", at)
     ids = [m["id"] for m in res.get("messages", [])]
     actions = []
+    forwarded_dates = []
+    saved_files = []
     for mid in ids:
         full = _req(f"{GMAIL}/messages/{mid}?format=full", at)
         subj, date_hdr = "", ""
@@ -181,9 +227,11 @@ def costco(request):
         else:
             _forward(at, mid, me, datestr)
             fwd = datestr + ":forwarded"
+            forwarded_dates.append(datestr)
 
         # 2) save attachments ONLY if not already in the Drive folder (checked per file)
         saved = _save_attachments(at, full, folder_id, datestr)
+        saved_files.extend(saved)
         drv = ("saved=" + ",".join(saved)) if saved else (datestr + ":already-in-drive")
 
         # mark for visibility (harmless if already labeled)
@@ -193,4 +241,17 @@ def costco(request):
         actions.append("[" + fwd + "; " + drv + "]")
     msg = f"Costco run: {len(ids)} candidate(s). " + " ".join(actions)
     print(msg)
+
+    # --- push notification -------------------------------------------------
+    if forwarded_dates:
+        lines = ["✅ Costco report sent — " + ", ".join(sorted(set(forwarded_dates))),
+                 "→ Forwarded to Todd"]
+        if saved_files:
+            lines.append("→ Saved to Drive: " + ", ".join(sorted(set(saved_files))))
+        _notify("\n".join(lines))
+    elif ids:
+        _notify("ℹ️ Costco report was already sent earlier today — nothing new to send.")
+    else:
+        _notify("⚠️ No Costco email found at the 7:30 AM run — it may not have "
+                "arrived yet. If it doesn't show up, forward it manually.")
     return (msg, 200)

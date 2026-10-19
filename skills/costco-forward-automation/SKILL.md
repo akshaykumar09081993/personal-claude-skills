@@ -19,14 +19,19 @@ Fully cloud-hosted; the laptop is only used to deploy/manage via `gcloud`.
 `Cloud Scheduler (costco-daily-730am, 30 7 * * * America/Halifax)`
 → OIDC POST → `Cloud Function Gen2 "costco-daily"` (region us-central1, entry `costco`)
 → refreshes a user OAuth token (gmail.modify + drive.file) from **Secret Manager**
-→ Gmail search → **forward** to `tlaceycanadabread@hotmail.com` → **save .xlsx** to Drive
-folder `costco` → add Gmail label `costco-forwarded`.
+→ Gmail search → **forward** to `tlaceycanadabread@hotmail.com` (attachment renamed
+`costco_<date>.xlsx`) → **save** to Drive folder `costco` as `costco_<date>.xlsx`
+→ add Gmail label `costco-forwarded` → **Discord notification** (success / already-sent /
+no-email / failure).
 
 - Project: `sparklinxgroup` (number 272436447517)
 - Runtime + invoker SA: `costco-fn@sparklinxgroup.iam.gserviceaccount.com`
-  (roles: secretmanager.secretAccessor on the secret; run.invoker on the function)
+  (roles: secretmanager.secretAccessor on both secrets; run.invoker on the function)
 - Secret: `costco-oauth-token` (JSON: client_id/secret, refresh_token, token_uri) — mounted as env `TOKEN_JSON`
+- Secret: `costco-notify` (JSON: `{"provider":"discord","webhook":"https://discord.com/api/webhooks/.."}`
+  — also supports `{"provider":"telegram","bot_token":"..","chat_id":".."}`) — mounted as env `NOTIFY_JSON`
 - Env vars: `FORWARD_TO`, `SUBJECT_HINT`, `DRIVE_FOLDER`, `LABEL_NAME`
+- Saved/forwarded filename: `costco_<YYYY-MM-DD>.xlsx` (date = the Costco email's Date header)
 - Function URL: `https://costco-daily-cc7zaocrkq-uc.a.run.app`
 - Source of truth: `scripts/main.py` (+ `requirements.txt`)
 
@@ -36,7 +41,11 @@ folder `costco` → add Gmail label `costco-forwarded`.
 - **Change recipient/folder/subject:** `gcloud functions deploy costco-daily --region us-central1 --update-env-vars FORWARD_TO=...`
 - **Change schedule/time:** `gcloud scheduler jobs update http costco-daily-730am --location us-central1 --schedule "30 7 * * *" --time-zone America/Halifax`
 - **Redeploy code:** edit `scripts/main.py`, then
-  `gcloud functions deploy costco-daily --gen2 --runtime python312 --region us-central1 --source <dir> --entry-point costco --trigger-http --no-allow-unauthenticated --service-account costco-fn@sparklinxgroup.iam.gserviceaccount.com --set-secrets TOKEN_JSON=costco-oauth-token:latest`
+  `gcloud functions deploy costco-daily --gen2 --runtime python312 --region us-central1 --source <dir> --entry-point costco --trigger-http --no-allow-unauthenticated --service-account costco-fn@sparklinxgroup.iam.gserviceaccount.com --set-secrets "TOKEN_JSON=costco-oauth-token:latest,NOTIFY_JSON=costco-notify:latest"`
+  (always pass BOTH secrets — `--set-secrets` replaces the full set.)
+- **Change/add notification channel:** update the `costco-notify` secret
+  (`gcloud secrets versions add costco-notify --data-file <json>`); no redeploy needed if only the
+  secret value changed and it's mounted `:latest` (new revisions pick it up; to force, redeploy).
 - **Pause / resume:** `gcloud scheduler jobs pause|resume costco-daily-730am --location us-central1`
 
 ## Token / auth notes
@@ -65,6 +74,9 @@ folder `costco` → add Gmail label `costco-forwarded`.
 - **File type:** `main.py` forces the Drive mimeType by file extension (`EXT_MIME`/`_mime_for`) so
   the saved file is a proper `.xlsx` (`...spreadsheetml.sheet`). Earlier versions trusted Gmail's
   type and saved files as generic `application/xlsx` — don't revert that.
+- **Discord notify 403 / `error code: 1010`:** Discord/Cloudflare blocks the default
+  `python-urllib` User-Agent. `_notify` sets `User-Agent: costco-automation/1.0` to pass. Don't
+  remove it. (Telegram has no such requirement.) Discord webhook success = HTTP **204** (no body).
 - If an invocation logs `lacks run.routes.invoke` right after a redeploy, it's just IAM
   propagation on the new Cloud Run revision — wait ~45s and re-run; the `run.invoker` binding on
   `costco-fn@` must exist on the `costco-daily` Run service.
