@@ -28,6 +28,9 @@ skills on each launch).
 | [`otto-week-execution`](skills/otto-week-execution/SKILL.md) | Plan the week for our stores from the Useful Information docs — what's on sale/featured + what goes on which display/where (MOD). |
 | [`otto-download-statements`](skills/otto-download-statements/SKILL.md) | Log into OTTO and download the weekly *Distributor Weekly Statement* PDFs into `~/Documents/bookeeping/<year>/<Month>/Checking` (e.g. the ones paid in a given month). Step 1 → feeds `otto-bookkeeping`. |
 | [`otto-bookkeeping`](skills/otto-bookkeeping/SKILL.md) | Parse the downloaded OTTO statement PDFs into a CSV ledger + monthly summary (Product Total, fees, Balance Due) and reconcile payments received in a month. Step 2. |
+| [`adp-teampay`](skills/adp-teampay/SKILL.md) | Log into ADP **TeamPay** and download paystubs & payroll reports (Register, Journal, Totals, ROE…) as PDFs. ADP blocks automation at login → drive the user's **real Chrome over CDP** (not a fresh Playwright browser). |
+| [`wcb-calculator`](skills/wcb-calculator/SKILL.md) | Compute monthly **WCB** owed for **employees only** (excludes contractors) from the ADP Payroll Register PDFs — sums the T4 GROSS column × the WCB rate ($/$100; NS = 4.93%). |
+| [`payroll-hours-reconciliation`](skills/payroll-hours-reconciliation/SKILL.md) | Reconcile **flat pay vs actual hours worked** → per-cycle wage diff + prorated employer CPP/EI + WCB, totalled, minus repayments; writes a Google Sheets breakdown. |
 
 ---
 
