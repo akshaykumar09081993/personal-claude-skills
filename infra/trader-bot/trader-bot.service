@@ -1,0 +1,16 @@
+[Unit]
+Description=Confirm-gated Discord day-trading bot (day-trader-skill, Alpaca paper)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=avu
+WorkingDirectory=/home/avu/trading
+EnvironmentFile=/home/avu/trading/.env
+ExecStart=/usr/bin/python3 /home/avu/trader-bot/bot.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
