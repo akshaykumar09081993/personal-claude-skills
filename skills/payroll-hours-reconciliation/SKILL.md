@@ -61,9 +61,19 @@ should be confirmed):
 A **pay period is a 14-day Sat→Fri fortnight** (e.g. 2026/11/07 Sat → 2026/11/20 Fri).
 
 ### The summary blocks (right side of each Schedule tab)
-Per-period blocks are **stacked vertically down the right columns**, oldest at top, ~13–14 rows pitch.
-They are **not** row-aligned with the date grid and carry **no dates** — the newest block is simply the
-lowest one. **1702 blocks live in cols N–W; 1736 blocks live in cols K–T.** Current format (rate shown
+Per-period blocks are **stacked vertically down the right columns**, oldest at top, ~13–14 rows pitch,
+each roughly **aligned to its fortnight's rows in the grid** (header a few rows into the period). They
+carry **no dates** — identify a block by its position next to the matching grid dates.
+- **Schedule-1702 blocks → cols N–W.** A long continuous stack; the newest is simply the lowest one
+  (e.g. Nov 7–20 2026 went at rows 620–627, below the previous block ending ~row 614).
+- **Schedule-1736 blocks → cols K–T, immediately right of the date grid.** The REAL stack is short and
+  sits beside the grid (headers at rows 5, 19, 33, 46, 62 …; Nov 7–20 2026 → rows **76–83**, just below
+  the previous block's Total at row 69). ⚠️ **Do NOT use rows ~537–558** in this tab: that region is
+  **stray leftover 1702 content** (SU/AM/PA/HA with flight notes) floating in empty space far below the
+  grid — appending there puts the block where the user can't see it. Always anchor the new 1736 block to
+  the grid rows of the period, right under the previous real block.
+
+Current format (rate shown
 in the header, currently **$18/hr**; it has climbed 16 → 16.50 → 17.50 → 17.75 → 18):
 
 ```
@@ -82,7 +92,10 @@ Code | Afternoon | Aft × 18 | Morning | Mor × 18 | Warehouse | TOTAL | Past Se
 - **Mike (MI) is NOT paid hourly in these blocks** — he fills many morning cells but is salaried/paid
   separately. **Skip him** (default). Same default for **TL** on 1736 unless the user says otherwise.
 - **Monitoring $ → Warehouse.** 1702: the bare `200`/day in col K accrues to **HA's** warehouse (e.g.
-  6 days × $200 = $1,200). 1736: each `CODE(amount)` becomes that code's own warehouse row.
+  6 days × $200 = $1,200). 1736: each `CODE(amount)` becomes that code's own warehouse row (SS hourly;
+  HA/AK/MT get their monitoring $). ⚠️ Older 1736 blocks sometimes **lumped the non-HA monitoring under
+  one `MI` warehouse line** (e.g. $2,000) instead of per-person — confirm with the user whether to split
+  per earner or lump; default to splitting per person so the money is attributed to who earned it.
 - **HA carries a running advance** (flight, etc.), tracked in `Past Settlements` / `Notes` as
   "`<prev> - <deduction> = <remaining>`". The per-period deduction is **not** in the grid — ask the
   user, or leave `Past Settlements` blank and flag it.
@@ -107,9 +120,12 @@ Code | Afternoon | Aft × 18 | Morning | Mor × 18 | Warehouse | TOTAL | Past Se
 6. **Read the block back** with `UNFORMATTED_VALUE` and show the user the resolved numbers + every flag
    (skipped people, flat overrides, advances left blank, new codes).
 
-Worked example — Nov 7–20 2026: 1702 → SU 18m(flat 810), AM 12m, SS 6a/9m, V 22m, HA 16a/12m + $1200
-wh (TOTAL $2,910 / payout $3,396). 1736 → SS 48m, HA 1m + $300, AK $500, MT $1200 (TOTAL $2,882). Mike
-& TL skipped; HA advance left blank.
+Worked example — Nov 7–20 2026:
+- **1702** (rows 620–627) → SU 18m (flat 810), AM 12m, SS 6a/9m, V 22m, HA 16a/12m + $1,200 wh.
+  TOTAL $2,910 / payout **$3,396**.
+- **1736** (rows 76–83, next to the grid) → SS 57m ($1,026), HA 1m + $300 ($318), AK $500, MT $1,600.
+  TOTAL **$3,444**. (SS 57m — not 48 — once the duplicate-empty-date-row trap is avoided.)
+- Mike & TL skipped; HA advance left blank; `V` is a new hourly code.
 
 ## Job 2 — flat-pay vs actual-hours reconciliation
 When the user paid a flat amount per cycle but wants to know the overpayment vs hours worked:
