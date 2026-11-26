@@ -76,6 +76,13 @@ Examples: `from:bimbo has:attachment newer_than:30d`, `subject:invoice is:unread
 - Registered: `claude mcp add --scope user gmail -- npx -y @gongrzhe/server-gmail-autoauth-mcp`.
 - Re-authenticate (if the server shows "Needs authentication" or tokens expire/revoke):
   `cd ~/.gmail-mcp && npx -y @gongrzhe/server-gmail-autoauth-mcp auth` → approve in browser.
+  - A dead refresh token surfaces as **`invalid_grant`** on every call; a `/mcp` reconnect alone will
+    NOT fix it — you must run the `auth` command above to rewrite `credentials.json` (confirm its mtime
+    updated), then reconnect the server.
+  - ⚠️ The auth callback server binds **`localhost:3000`**; if that port is taken it dies with
+    `EADDRINUSE`. On this Mac the **`llmoperator-ui-1` Docker container** publishes :3000 — stop it first
+    (`docker stop llmoperator-ui-1`), run the auth, then `docker start llmoperator-ui-1`. (`lsof -nP
+    -iTCP:3000 -sTCP:LISTEN` to see the holder.)
 - Health check: `claude mcp list` (look for `gmail … ✔ Connected`).
 - Scopes granted: `gmail.modify` + `gmail.settings.basic`. To send from a different
   address/alias or change settings you'd need to re-auth with broader scopes.

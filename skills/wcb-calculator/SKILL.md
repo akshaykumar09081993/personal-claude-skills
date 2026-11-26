@@ -40,7 +40,36 @@ python3 scripts/wcb_from_registers.py \
 It prints each employee's gross per register, the monthly total, and the WCB owed, plus flags any
 CONTRACT payees it excluded.
 
+## Where it goes — the WCB tracking sheet (⚠️ APPEND, never overwrite)
+The WCB total is logged in the **`WCB` tab** of the Google Sheet **WORK SCHEDULE SHEET**
+(ID `18_BWXOARekLXgM4Br9tbQ1q6d2gX5SVRm0kk7fYY7h4`; write via the `accessing-google-drive` keychain
+token, Sheets API, `values:batchUpdate` + `USER_ENTERED`). It holds **one stacked block per month**,
+newest below older. The user's block format (match it):
+```
+<MONTH> 2026 — WCB (employees only, not contractors)
+Employee              | <Mon> Gross
+<name>                | <gross $>
+… (one row per employee) …
+Total employee gross  | =SUM(...)
+WCB rate              | 0.0493
+WCB @ $4.93 per $100  | =total*rate
+```
+- **ALWAYS read the WCB tab's CURRENT contents immediately before writing, and append the new month in
+  the first free rows BELOW the last block.** Do NOT write to a fixed range like `A1:E12`.
+  *(Hard lesson: an early "the tab is empty" read went stale while the user added the October block; a
+  later fixed-range November write clobbered October rows 6–12 and left the October summary formulas
+  re-summing November cells. Re-read right before writing.)*
+- Keep the user's simple two-column style (`Employee | Gross`), not a fancy multi-column layout.
+- `WCB-OLD` is a 160-row historical pay ledger in the same file — **never touch it.**
+
 ## Notes
 - Use the **Approve** (final) registers, not **Calculate** (pre-approval) copies.
 - "Payroll_Register" (small PDF) is enough; the big "Register" has the same figures.
 - WCB is on wages only — it is an employer cost, separate from CPP/EI.
+- **An employee's assessability can change month to month.** Harinder, e.g., is paid REGULAR+COMMISS
+  (→ has T4 GROSS, counted) some months and all-CONTRACT (→ blank GROSS, excluded) others — Oct 2026 he
+  was $4,308 assessable, Nov 2026 he was contract-only and correctly dropped. Trust the GROSS column per
+  period; don't carry a person's status over from last month.
+- **Pay-period map (2-week periods ending Saturday; group by period-END month):** Nov 2026 = PP23 (end
+  11/06) + PP24 (end 11/20); Oct 2026 = PP21 (end 10/09) + PP22 (end 10/23); Sep 2026 = ends 09/11 + 09/25.
+  Each month = the two periods whose END date lands in it. Confirm the two period-ends with the user.

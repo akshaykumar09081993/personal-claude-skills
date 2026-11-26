@@ -22,6 +22,21 @@ Do **NOT** keep retrying (ADP locks the account after a few failed attempts).
 **The fix that works:** connect Playwright over CDP to the user's **real Chrome** (real
 fingerprint, no `navigator.webdriver`). The login then goes through normally.
 
+### CDP connect gotchas (verified Nov 2026, Chrome 158 + Playwright 1.61)
+- `connectOverCDP` throws **`Protocol error (Browser.setDownloadBehavior): Browser context management
+  is not supported`** when the CDP Chrome has **no open page target** (e.g. right after launch, or after
+  you `page.close()`/`browser.close()` the last tab). **Always ensure a page/tab is open before
+  connecting.** Open one without Playwright via the CDP HTTP endpoint:
+  `curl -X PUT "http://localhost:9222/json/new?https://online.adp.com/signin/v1/?APPID=TeamPAY"`.
+- Check login state cheaply over HTTP (no Playwright): `curl -s http://localhost:9222/json` → if a
+  `page` tab is on `teampay.adp.com/Payroll/...` you're in; if on `online.adp.com/signin` you're not.
+- The ADP **session dies between sessions** — the copied profile usually lands on the sign-in page.
+  Easiest + safest (no lockout risk): open the sign-in tab for the user and have them log in manually
+  (they handle the password + MFA), then proceed credential-free. Only drive the login with
+  `ADP_USER`/`ADP_PASS` if they hand them over.
+- `b.close()` on a CDP-connected browser can leave the Chrome window with **0 targets** → the next
+  connect fails (see first bullet). Re-open a tab before reconnecting.
+
 ## Prerequisites
 - **Playwright** at `/Users/avu/Documents/Claude/node_modules` → run node with
   `NODE_PATH=/Users/avu/Documents/Claude/node_modules`.
