@@ -28,13 +28,21 @@ This is **step 1** of a two-step flow:
 - **Credentials** — supply at runtime, NEVER commit them (this repo is public):
   - env: `OTTO_USERNAME`, `OTTO_PASSWORD` (optionally `OTTO_URL`)
   - or a local, git-ignored file `~/.config/otto/credentials.json` → `{"username":"…","password":"…"}`
-- The user's route is **1702**.
+- The user runs **two routes: 1702 and 1736** — both are reconciled each month. The same OTTO login
+  sees both; pick the route with `--route 1736` (the script selects the **Route #** dropdown, mat-select
+  nth 0, before reading weeks and re-applies it after every reload). `--route` also labels the filename
+  (`… Route 1736 …`). Run the download once per route into the same `…/Checking` folder, then parse with
+  `--route all`. Always confirm a 1736 PDF really reads `ROUTE ID: 1736` inside (the fileKey check only
+  verifies the week, not the route).
 
 ## Quick start
 ```bash
 # All statements whose payment landed in June 2026 (auto out-dir: ~/Documents/bookeeping/2026/June/Checking)
 OTTO_USERNAME='...' OTTO_PASSWORD='...' \
   node scripts/otto-statements.js --paid-month 2026-06
+
+# Route 1736 (two-route months): pull into the SAME Checking folder as 1702, then parse --route all
+node scripts/otto-statements.js --paid-month 2026-06 --route 1736
 
 # Explicit week-ending window + explicit out dir
 node scripts/otto-statements.js --from 2026-05-01 --to 2026-06-30 \

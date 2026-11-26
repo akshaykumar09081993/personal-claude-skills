@@ -122,6 +122,17 @@ const DATE_RE = /(\d{4}-\d{2}-\d{2})\s*(?:-|to|To)\s*(\d{4}-\d{2}-\d{2})/;
   const ctx = await b.newContext({ viewport: { width: 1700, height: 1100 }, acceptDownloads: true });
   const p = await ctx.newPage();
   const has = s => p.evaluate(t => document.body.innerText.includes(t), s).catch(() => false);
+  // Select the "Route #" dropdown (mat-select nth 0) to the requested route. Must be re-applied after
+  // every /statements reload. Harmless for the default route; escapes cleanly if the option isn't found.
+  const selRoute = async (route) => {
+    try {
+      const rs = p.locator('mat-select').nth(0);
+      await rs.click(); await p.waitForTimeout(1000);
+      const opt = p.locator('mat-option').filter({ hasText: new RegExp('(?:^|\\D)' + route + '(?:\\D|$)') }).first();
+      if (await opt.count()) { await opt.click(); await p.waitForTimeout(1200); }
+      else { await p.keyboard.press('Escape').catch(() => {}); }
+    } catch (_) { await p.keyboard.press('Escape').catch(() => {}); }
+  };
 
   try {
     // ---- login (proven flow from orderonotto-ordering) ----
@@ -161,6 +172,7 @@ const DATE_RE = /(\d{4}-\d{2}-\d{2})\s*(?:-|to|To)\s*(\d{4}-\d{2}-\d{2})/;
     // Selecting a week + "View Reports" lists that week's PDF links (direct tokenized URLs).
     // IMPORTANT: reload /statements BEFORE each week — switching weeks without a reload leaves stale
     // links in the DOM and can serve the wrong (prior-year) file. Enumerate weeks first, then loop.
+    await selRoute(opts.route);
     const weekSel0 = p.locator('mat-select').nth(1);
     await weekSel0.click().catch(() => {});
     await p.waitForTimeout(1200);
@@ -183,6 +195,7 @@ const DATE_RE = /(\d{4}-\d{2}-\d{2})\s*(?:-|to|To)\s*(\d{4}-\d{2}-\d{2})/;
       try {
         await p.goto('https://orderonotto.ca/statements', { waitUntil: 'networkidle', timeout: 30000 });
         for (let i = 0; i < 8; i++) { await p.waitForTimeout(1500); if (await has('Available Statements')) break; }
+        await selRoute(opts.route);
         const weekSel = p.locator('mat-select').nth(1);
         await weekSel.click(); await p.waitForTimeout(1400);
         await p.locator('mat-option').filter({ hasText: new RegExp('^\\s*' + wk + '\\s*$') }).first().click();
